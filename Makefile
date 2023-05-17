@@ -83,8 +83,8 @@ rm-dist:
 
 .PHONY: test
 test:
-	${GO} test -ldflags="-X github.com/twpayne/chezmoi/pkg/chezmoitest.umaskStr=0o022" ./...
-	${GO} test -ldflags="-X github.com/twpayne/chezmoi/pkg/chezmoitest.umaskStr=0o002" ./...
+	${GO} test -ldflags="-X github.com/twpayne/chezmoi/v2/pkg/chezmoitest.umaskStr=0o022" ./...
+	${GO} test -ldflags="-X github.com/twpayne/chezmoi/v2/pkg/chezmoitest.umaskStr=0o002" ./...
 
 .PHONY: test-docker
 test-docker:
@@ -151,7 +151,7 @@ ensure-goversioninfo:
 .PHONY: release
 release:
 	goreleaser release \
-		--rm-dist \
+		--clean \
 		${GORELEASER_FLAGS}
 
 .PHONY: shellcheck
@@ -161,7 +161,7 @@ shellcheck:
 .PHONY: test-release
 test-release:
 	goreleaser release \
-		--rm-dist \
+		--clean \
 		--skip-publish \
 		--skip-sign \
 		--snapshot \

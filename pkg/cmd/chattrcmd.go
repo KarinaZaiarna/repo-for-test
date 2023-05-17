@@ -10,6 +10,10 @@ import (
 	"github.com/twpayne/chezmoi/v2/pkg/chezmoi"
 )
 
+type chattrCmdConfig struct {
+	recursive bool
+}
+
 type boolModifier int
 
 const (
@@ -38,6 +42,14 @@ const (
 	orderModifierSetAfter       orderModifier = 2
 )
 
+type sourceDirTypeModifier int
+
+const (
+	sourceDirTypeModifierLeaveUnchanged sourceDirTypeModifier = iota
+	sourceDirTypeModifierSetRemove
+	sourceDirTypeModifierClearRemove
+)
+
 type sourceFileTypeModifier int
 
 const (
@@ -46,6 +58,8 @@ const (
 	sourceFileTypeModifierClearCreate
 	sourceFileTypeModifierSetModify
 	sourceFileTypeModifierClearModify
+	sourceFileTypeModifierSetRemove
+	sourceFileTypeModifierClearRemove
 	sourceFileTypeModifierSetScript
 	sourceFileTypeModifierClearScript
 	sourceFileTypeModifierSetSymlink
@@ -53,16 +67,17 @@ const (
 )
 
 type modifier struct {
+	sourceDirType  sourceDirTypeModifier
 	sourceFileType sourceFileTypeModifier
 	condition      conditionModifier
 	empty          boolModifier
 	encrypted      boolModifier
 	exact          boolModifier
 	executable     boolModifier
+	external       boolModifier
 	order          orderModifier
 	private        boolModifier
 	readOnly       boolModifier
-	remove         boolModifier
 	template       boolModifier
 }
 
@@ -80,6 +95,9 @@ func (c *Config) newChattrCmd() *cobra.Command {
 			requiresSourceDirectory,
 		),
 	}
+
+	flags := chattrCmd.Flags()
+	flags.BoolVarP(&c.chattr.recursive, "recursive", "r", c.chattr.recursive, "Recurse into subdirectories")
 
 	return chattrCmd
 }
@@ -99,6 +117,7 @@ func (c *Config) chattrCmdValidArgs(
 			"encrypted",
 			"exact",
 			"executable",
+			"external",
 			"modify",
 			"once",
 			"onchange",
@@ -143,7 +162,8 @@ func (c *Config) runChattrCmd(cmd *cobra.Command, args []string, sourceState *ch
 	}
 
 	targetRelPaths, err := c.targetRelPaths(sourceState, args[1:], targetRelPathsOptions{
-		mustBeInSourceState: true,
+		mustBeManaged: true,
+		recursive:     c.chattr.recursive,
 	})
 	if err != nil {
 		return err
@@ -151,7 +171,7 @@ func (c *Config) runChattrCmd(cmd *cobra.Command, args []string, sourceState *ch
 
 	// Sort targets in reverse so we update children before their parent
 	// directories.
-	sort.Sort(targetRelPaths)
+	sort.Sort(sort.Reverse(targetRelPaths))
 
 	encryptedSuffix := sourceState.Encryption().EncryptedSuffix()
 	for _, targetRelPath := range targetRelPaths {
@@ -279,6 +299,23 @@ func (m orderModifier) modify(order chezmoi.ScriptOrder) chezmoi.ScriptOrder {
 }
 
 // modify returns the modified value of type.
+func (m sourceDirTypeModifier) modify(sourceDirType chezmoi.SourceDirTargetType) chezmoi.SourceDirTargetType {
+	switch m {
+	case sourceDirTypeModifierLeaveUnchanged:
+		return sourceDirType
+	case sourceDirTypeModifierSetRemove:
+		return chezmoi.SourceDirTypeRemove
+	case sourceDirTypeModifierClearRemove:
+		if sourceDirType == chezmoi.SourceDirTypeRemove {
+			return chezmoi.SourceDirTypeDir
+		}
+		return sourceDirType
+	default:
+		panic(fmt.Sprintf("%d: unknown type modifier", m))
+	}
+}
+
+// modify returns the modified value of type.
 func (m sourceFileTypeModifier) modify(sourceFileType chezmoi.SourceFileTargetType) chezmoi.SourceFileTargetType {
 	switch m {
 	case sourceFileTypeModifierLeaveUnchanged:
@@ -287,6 +324,13 @@ func (m sourceFileTypeModifier) modify(sourceFileType chezmoi.SourceFileTargetTy
 		return chezmoi.SourceFileTypeCreate
 	case sourceFileTypeModifierClearCreate:
 		if sourceFileType == chezmoi.SourceFileTypeCreate {
+			return chezmoi.SourceFileTypeFile
+		}
+		return sourceFileType
+	case sourceFileTypeModifierSetRemove:
+		return chezmoi.SourceFileTypeRemove
+	case sourceFileTypeModifierClearRemove:
+		if sourceFileType == chezmoi.SourceFileTypeRemove {
 			return chezmoi.SourceFileTypeFile
 		}
 		return sourceFileType
@@ -374,6 +418,8 @@ func parseModifier(s string) (*modifier, error) {
 			m.exact = bm
 		case "executable", "x":
 			m.executable = bm
+		case "external":
+			m.external = bm
 		case "modify":
 			switch bm {
 			case boolModifierClear:
@@ -400,7 +446,14 @@ func parseModifier(s string) (*modifier, error) {
 		case "readonly", "r":
 			m.readOnly = bm
 		case "remove":
-			m.remove = bm
+			switch bm {
+			case boolModifierClear:
+				m.sourceDirType = sourceDirTypeModifierClearRemove
+				m.sourceFileType = sourceFileTypeModifierClearRemove
+			case boolModifierSet:
+				m.sourceDirType = sourceDirTypeModifierSetRemove
+				m.sourceFileType = sourceFileTypeModifierSetRemove
+			}
 		case "script":
 			switch bm {
 			case boolModifierClear:
@@ -426,12 +479,23 @@ func parseModifier(s string) (*modifier, error) {
 
 // modifyDirAttr returns the modified value of dirAttr.
 func (m *modifier) modifyDirAttr(dirAttr chezmoi.DirAttr) chezmoi.DirAttr {
-	return chezmoi.DirAttr{
-		TargetName: dirAttr.TargetName,
-		Exact:      m.exact.modify(dirAttr.Exact),
-		Private:    m.private.modify(dirAttr.Private),
-		ReadOnly:   m.readOnly.modify(dirAttr.ReadOnly),
-		Remove:     m.remove.modify(dirAttr.Remove),
+	switch m.sourceDirType.modify(dirAttr.Type) {
+	case chezmoi.SourceDirTypeDir:
+		return chezmoi.DirAttr{
+			TargetName: dirAttr.TargetName,
+			Type:       chezmoi.SourceDirTypeDir,
+			Exact:      m.exact.modify(dirAttr.Exact),
+			External:   m.external.modify(dirAttr.External),
+			Private:    m.private.modify(dirAttr.Private),
+			ReadOnly:   m.readOnly.modify(dirAttr.ReadOnly),
+		}
+	case chezmoi.SourceDirTypeRemove:
+		return chezmoi.DirAttr{
+			TargetName: dirAttr.TargetName,
+			Type:       chezmoi.SourceDirTypeRemove,
+		}
+	default:
+		panic(fmt.Sprintf("%d: unknown source dir type", dirAttr.Type))
 	}
 }
 
@@ -462,6 +526,7 @@ func (m *modifier) modifyFileAttr(fileAttr chezmoi.FileAttr) chezmoi.FileAttr {
 		return chezmoi.FileAttr{
 			TargetName: fileAttr.TargetName,
 			Type:       chezmoi.SourceFileTypeCreate,
+			Empty:      m.encrypted.modify(fileAttr.Empty),
 			Encrypted:  m.encrypted.modify(fileAttr.Encrypted),
 			Executable: m.executable.modify(fileAttr.Executable),
 			Private:    m.private.modify(fileAttr.Private),

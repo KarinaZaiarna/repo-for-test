@@ -5,9 +5,8 @@ import (
 	"io/fs"
 	"testing"
 
+	"github.com/alecthomas/assert/v2"
 	"github.com/coreos/go-semver/semver"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	vfs "github.com/twpayne/go-vfs/v4"
 
 	"github.com/twpayne/chezmoi/v2/pkg/chezmoitest"
@@ -45,12 +44,12 @@ func TestDumpSystem(t *testing.T) {
 				Patch: 3,
 			}),
 		)
-		require.NoError(t, s.Read(ctx, nil))
+		assert.NoError(t, s.Read(ctx, nil))
 		requireEvaluateAll(t, s, system)
 
 		dumpSystem := NewDumpSystem()
 		persistentState := NewMockPersistentState()
-		require.NoError(t, s.applyAll(dumpSystem, system, persistentState, EmptyAbsPath, ApplyOptions{
+		assert.NoError(t, s.applyAll(dumpSystem, system, persistentState, EmptyAbsPath, ApplyOptions{
 			Filter: NewEntryTypeFilter(EntryTypesAll, EntryTypesNone),
 		}))
 		expectedData := map[string]any{
@@ -78,6 +77,6 @@ func TestDumpSystem(t *testing.T) {
 			},
 		}
 		actualData := dumpSystem.Data()
-		assert.Equal(t, expectedData, actualData)
+		assert.Equal(t, expectedData, actualData.(map[string]any))
 	})
 }

@@ -4,8 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/alecthomas/assert/v2"
 	vfs "github.com/twpayne/go-vfs/v4"
 	"github.com/twpayne/go-vfs/v4/vfst"
 
@@ -57,15 +56,15 @@ func TestStatusCmd(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			chezmoitest.WithTestFS(t, tc.root, func(fileSystem vfs.FS) {
 				stdout := strings.Builder{}
-				require.NoError(t, newTestConfig(t, fileSystem, withStdout(&stdout)).execute(append([]string{"status"}, tc.args...)))
+				assert.NoError(t, newTestConfig(t, fileSystem, withStdout(&stdout)).execute(append([]string{"status"}, tc.args...)))
 				assert.Equal(t, tc.stdoutStr, stdout.String())
 
-				require.NoError(t, newTestConfig(t, fileSystem).execute(append([]string{"apply"}, tc.args...)))
+				assert.NoError(t, newTestConfig(t, fileSystem).execute(append([]string{"apply"}, tc.args...)))
 				vfst.RunTests(t, fileSystem, "", tc.postApplyTests...)
 
 				stdout.Reset()
-				require.NoError(t, newTestConfig(t, fileSystem, withStdout(&stdout)).execute(append([]string{"status"}, tc.args...)))
-				assert.Empty(t, stdout.String())
+				assert.NoError(t, newTestConfig(t, fileSystem, withStdout(&stdout)).execute(append([]string{"status"}, tc.args...)))
+				assert.Zero(t, stdout.String())
 			})
 		})
 	}

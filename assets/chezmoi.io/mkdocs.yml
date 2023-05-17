@@ -2,7 +2,7 @@ site_name: chezmoi
 site_url: https://chezmoi.io
 site_description: Manage your dotfiles across multiple machines, securely.
 site_author: Tom Payne
-copyright: Copyright © Tom Payne 2018-2022
+copyright: Copyright © Tom Payne 2018-2023
 repo_name: twpayne/chezmoi
 repo_url: https://github.com/twpayne/chezmoi
 edit_uri: edit/master/assets/chezmoi.io/docs/
@@ -62,6 +62,8 @@ nav:
     - 1Password: user-guide/password-managers/1password.md
     - AWS Secrets Manager: user-guide/password-managers/aws-secrets-manager.md
     - Bitwarden: user-guide/password-managers/bitwarden.md
+    - Dashlane: user-guide/password-managers/dashlane.md
+    - ejson: user-guide/password-managers/ejson.md
     - gopass: user-guide/password-managers/gopass.md
     - KeePassXC: user-guide/password-managers/keepassxc.md
     - Keychain and Windows Credentials Manager: user-guide/password-managers/keychain-and-windows-credentials-manager.md
@@ -106,6 +108,7 @@ nav:
     - reference/configuration-file/index.md
     - Variables: reference/configuration-file/variables.md
     - Editor: reference/configuration-file/editor.md
+    - Hooks: reference/configuration-file/hooks.md
     - pinentry: reference/configuration-file/pinentry.md
     - textconv: reference/configuration-file/textconv.md
     - umask: reference/configuration-file/umask.md
@@ -176,24 +179,32 @@ nav:
       - comment: reference/templates/functions/comment.md
       - completion: reference/templates/functions/completion.md
       - decrypt: reference/templates/functions/decrypt.md
+      - deleteValueAtPath: reference/templates/functions/deleteValueAtPath.md
       - encrypt: reference/templates/functions/encrypt.md
       - eqFold: reference/templates/functions/eqFold.md
       - fromIni: reference/templates/functions/fromIni.md
+      - fromJsonc: reference/templates/functions/fromJsonc.md
       - fromToml: reference/templates/functions/fromToml.md
       - fromYaml: reference/templates/functions/fromYaml.md
       - glob: reference/templates/functions/glob.md
+      - hexDecode: reference/templates/functions/hexDecode.md
+      - hexEncode: reference/templates/functions/hexEncode.md
       - include: reference/templates/functions/include.md
       - includeTemplate: reference/templates/functions/includeTemplate.md
       - ioreg: reference/templates/functions/ioreg.md
       - joinPath: reference/templates/functions/joinPath.md
+      - jq: reference/templates/functions/jq.md
       - lookPath: reference/templates/functions/lookPath.md
+      - lstat: reference/templates/functions/lstat.md
       - mozillaInstallHash: reference/templates/functions/mozillaInstallHash.md
       - output: reference/templates/functions/output.md
+      - pruneEmptyDicts: reference/templates/functions/pruneEmptyDicts.md
       - quoteList: reference/templates/functions/quoteList.md
       - replaceAllRegex: reference/templates/functions/replaceAllRegex.md
       - setValueAtPath: reference/templates/functions/setValueAtPath.md
       - stat: reference/templates/functions/stat.md
       - toIni: reference/templates/functions/toIni.md
+      - toPrettyJson: reference/templates/functions/toPrettyJson.md
       - toToml: reference/templates/functions/toToml.md
       - toYaml: reference/templates/functions/toYaml.md
     - GitHub functions:
@@ -227,7 +238,18 @@ nav:
       - reference/templates/bitwarden-functions/index.md
       - bitwarden: reference/templates/bitwarden-functions/bitwarden.md
       - bitwardenAttachment: reference/templates/bitwarden-functions/bitwardenAttachment.md
+      - bitwardenAttachmentByRef: reference/templates/bitwarden-functions/bitwardenAttachmentByRef.md
       - bitwardenFields: reference/templates/bitwarden-functions/bitwardenFields.md
+      - rbw: reference/templates/bitwarden-functions/rbw.md
+      - rbwFields: reference/templates/bitwarden-functions/rbwFields.md
+    - Dashlane functions:
+      - reference/templates/dashlane-functions/index.md
+      - dashlaneNote: reference/templates/dashlane-functions/dashlaneNote.md
+      - dashlanePassword: reference/templates/dashlane-functions/dashlanePassword.md
+    - ejson functions:
+      - reference/templates/ejson-functions/index.md
+      - ejsonDecrypt: reference/templates/ejson-functions/ejsonDecrypt.md
+      - ejsonDecryptWithKey: reference/templates/ejson-functions/ejsonDecryptWithKey.md
     - gopass functions:
       - reference/templates/gopass-functions/index.md
       - gopass: reference/templates/gopass-functions/gopass.md
@@ -275,9 +297,12 @@ nav:
   - Architecture: developer/architecture.md
   - Building on top of chezmoi: developer/building-on-top-of-chezmoi.md
 - Links:
-  - Articles, podcasts, and videos: links/articles-podcasts-and-videos.md
-  - Dotfile repos using chezmoi: links/dotfile-repos-using-chezmoi.md
+  - Articles: links/articles.md
+  - Podcasts: links/podcasts.md
+  - Videos: links/videos.md
+  - Dotfile repos: links/dotfile-repos.md
   - Related software: links/related-software.md
+  - Social media: links/social-media.md
 - License: license.md
 
 markdown_extensions:
@@ -303,20 +328,6 @@ plugins:
       on_pre_build: docs.hooks:on_pre_build
       on_files: docs.hooks:on_files
       on_post_build: docs.hooks:on_post_build
-- redirects:
-    redirect_maps:
-        # redirect links from previous Hugo-generated website
-      docs/architecture.md: developer/architecture.md
-      docs/comparison.md: comparison-table.md
-      docs/faq.md: user-guide/frequently-asked-questions/design.md
-      docs/how-to.md: user-guide/setup.md
-      docs/install.md: install.md
-      docs/media.md: links/articles-podcasts-and-videos.md
-      docs/quick-start.md: quick-start.md
-      docs/reference.md: reference/index.md
-      docs/related.md: links/related-software.md
-      docs/security.md: developer/security.md
-      docs/templating.md: user-guide/templating.md
 - search
 
 extra_javascript:

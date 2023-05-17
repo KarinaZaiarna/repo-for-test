@@ -11,7 +11,8 @@ import (
 )
 
 type managedCmdConfig struct {
-	filter *chezmoi.EntryTypeFilter
+	filter    *chezmoi.EntryTypeFilter
+	pathStyle pathStyle
 }
 
 func (c *Config) newManagedCmd() *cobra.Command {
@@ -28,8 +29,12 @@ func (c *Config) newManagedCmd() *cobra.Command {
 	flags := managedCmd.Flags()
 	flags.VarP(c.managed.filter.Exclude, "exclude", "x", "Exclude entry types")
 	flags.VarP(c.managed.filter.Include, "include", "i", "Include entry types")
+	flags.VarP(&c.managed.pathStyle, "path-style", "p", "Path style")
 
 	registerExcludeIncludeFlagCompletionFuncs(managedCmd)
+	if err := managedCmd.RegisterFlagCompletionFunc("path-style", pathStyleFlagCompletionFunc); err != nil {
+		panic(err)
+	}
 
 	return managedCmd
 }
@@ -48,7 +53,7 @@ func (c *Config) runManagedCmd(cmd *cobra.Command, args []string, sourceState *c
 		}
 	}
 
-	var targetRelPaths chezmoi.RelPaths
+	var paths []string
 	_ = sourceState.ForEach(func(targetRelPath chezmoi.RelPath, sourceStateEntry chezmoi.SourceStateEntry) error {
 		if !c.managed.filter.IncludeSourceStateEntry(sourceStateEntry) {
 			return nil
@@ -76,14 +81,25 @@ func (c *Config) runManagedCmd(cmd *cobra.Command, args []string, sourceState *c
 			}
 		}
 
-		targetRelPaths = append(targetRelPaths, targetRelPath)
+		var path string
+		switch c.managed.pathStyle {
+		case pathStyleAbsolute:
+			path = c.DestDirAbsPath.Join(targetRelPath).String()
+		case pathStyleRelative:
+			path = targetRelPath.String()
+		case pathStyleSourceAbsolute:
+			path = c.SourceDirAbsPath.Join(sourceStateEntry.SourceRelPath().RelPath()).String()
+		case pathStyleSourceRelative:
+			path = sourceStateEntry.SourceRelPath().RelPath().String()
+		}
+		paths = append(paths, path)
 		return nil
 	})
 
-	sort.Sort(targetRelPaths)
+	sort.Strings(paths)
 	builder := strings.Builder{}
-	for _, targetRelPath := range targetRelPaths {
-		fmt.Fprintln(&builder, targetRelPath)
+	for _, path := range paths {
+		fmt.Fprintln(&builder, path)
 	}
 	return c.writeOutputString(builder.String())
 }

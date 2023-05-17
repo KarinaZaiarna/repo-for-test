@@ -4,8 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/alecthomas/assert/v2"
 )
 
 func TestPromptBoolInitTemplateFunc(t *testing.T) {
@@ -68,7 +67,7 @@ func TestPromptBoolInitTemplateFunc(t *testing.T) {
 				withStdin(stdin),
 				withStdout(stdout),
 			)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			if tc.expectedErr {
 				assert.Panics(t, func() {
 					config.promptBoolInitTemplateFunc(tc.prompt, tc.args...)
@@ -141,7 +140,7 @@ func TestPromptIntInitTemplateFunc(t *testing.T) {
 				withStdin(stdin),
 				withStdout(stdout),
 			)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			if tc.expectedErr {
 				assert.Panics(t, func() {
 					config.promptIntInitTemplateFunc(tc.prompt, tc.args...)
@@ -227,7 +226,7 @@ func TestPromptStringInitTemplateFunc(t *testing.T) {
 				withStdin(stdin),
 				withStdout(stdout),
 			)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			if tc.expectedErr {
 				assert.Panics(t, func() {
 					config.promptStringInitTemplateFunc(tc.prompt, tc.args...)

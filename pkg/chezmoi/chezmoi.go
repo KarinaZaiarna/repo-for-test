@@ -4,7 +4,10 @@ package chezmoi
 import (
 	"bufio"
 	"bytes"
+	"crypto/md5"  //nolint:gosec
+	"crypto/sha1" //nolint:gosec
 	"crypto/sha256"
+	"crypto/sha512"
 	"fmt"
 	"io"
 	"io/fs"
@@ -17,6 +20,7 @@ import (
 
 	"github.com/spf13/cobra"
 	vfs "github.com/twpayne/go-vfs/v4"
+	"golang.org/x/crypto/ripemd160" //nolint:staticcheck
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
@@ -47,6 +51,7 @@ const (
 	encryptedPrefix  = "encrypted_"
 	exactPrefix      = "exact_"
 	executablePrefix = "executable_"
+	externalPrefix   = "external_"
 	literalPrefix    = "literal_"
 	modifyPrefix     = "modify_"
 	oncePrefix       = "once_"
@@ -93,10 +98,15 @@ var knownPrefixedFiles = newSet(
 	dataName+".toml",
 	dataName+".yaml",
 	externalName+".json",
+	externalName+".json"+TemplateSuffix,
 	externalName+".toml",
+	externalName+".toml"+TemplateSuffix,
 	externalName+".yaml",
+	externalName+".yaml"+TemplateSuffix,
 	ignoreName,
+	ignoreName+TemplateSuffix,
 	removeName,
+	removeName+TemplateSuffix,
 	VersionName,
 )
 
@@ -115,7 +125,7 @@ var knownTargetFiles = newSet(
 	"chezmoistate.boltdb",
 )
 
-var modeTypeNames = map[fs.FileMode]string{
+var FileModeTypeNames = map[fs.FileMode]string{
 	0:                 "file",
 	fs.ModeDir:        "dir",
 	fs.ModeSymlink:    "symlink",
@@ -295,30 +305,41 @@ func isEmpty(data []byte) bool {
 	return len(bytes.TrimSpace(data)) == 0
 }
 
+// md5Sum returns the MD5 sum of data.
+func md5Sum(data []byte) []byte {
+	md5SumArr := md5.Sum(data) //nolint:gosec
+	return md5SumArr[:]
+}
+
 // modeTypeName returns a string representation of mode.
 func modeTypeName(mode fs.FileMode) string {
-	if name, ok := modeTypeNames[mode.Type()]; ok {
+	if name, ok := FileModeTypeNames[mode.Type()]; ok {
 		return name
 	}
 	return fmt.Sprintf("0o%o: unknown type", mode.Type())
 }
 
-// mustTrimPrefix is like strings.TrimPrefix but panics if s is not prefixed by
-// prefix.
-func mustTrimPrefix(s, prefix string) string {
-	if !strings.HasPrefix(s, prefix) {
-		panic(fmt.Sprintf("%s: not prefixed by %s", s, prefix))
-	}
-	return s[len(prefix):]
+// ripemd160Sum returns the RIPEMD-160 sum of data.
+func ripemd160Sum(data []byte) []byte {
+	return ripemd160.New().Sum(data)
 }
 
-// mustTrimSuffix is like strings.TrimSuffix but panics if s is not suffixed by
-// suffix.
-func mustTrimSuffix(s, suffix string) string {
-	if !strings.HasSuffix(s, suffix) {
-		panic(fmt.Sprintf("%s: not suffixed by %s", s, suffix))
-	}
-	return s[:len(s)-len(suffix)]
+// sha1Sum returns the SHA1 sum of data.
+func sha1Sum(data []byte) []byte {
+	sha1SumArr := sha1.Sum(data) //nolint:gosec
+	return sha1SumArr[:]
+}
+
+// sha384Sum returns the SHA384 sum of data.
+func sha384Sum(data []byte) []byte {
+	sha384SumArr := sha512.Sum384(data)
+	return sha384SumArr[:]
+}
+
+// sha512Sum returns the SHA512 sum of data.
+func sha512Sum(data []byte) []byte {
+	sha512SumArr := sha512.Sum512(data)
+	return sha512SumArr[:]
 }
 
 // sortedKeys returns the keys of V in order.

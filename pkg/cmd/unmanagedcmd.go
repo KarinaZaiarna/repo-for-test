@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"io/fs"
 	"sort"
 	"strings"
@@ -12,6 +13,10 @@ import (
 	"github.com/twpayne/chezmoi/v2/pkg/chezmoi"
 )
 
+type unmanagedCmdConfig struct {
+	pathStyle pathStyle
+}
+
 func (c *Config) newUnmanagedCmd() *cobra.Command {
 	unmanagedCmd := &cobra.Command{
 		Use:     "unmanaged [path]...",
@@ -20,6 +25,13 @@ func (c *Config) newUnmanagedCmd() *cobra.Command {
 		Example: example("unmanaged"),
 		Args:    cobra.ArbitraryArgs,
 		RunE:    c.makeRunEWithSourceState(c.runUnmanagedCmd),
+	}
+
+	flags := unmanagedCmd.Flags()
+	flags.VarP(&c.unmanaged.pathStyle, "path-style", "p", "Path style")
+
+	if err := unmanagedCmd.RegisterFlagCompletionFunc("path-style", pathStyleFlagCompletionFunc); err != nil {
+		panic(err)
 	}
 
 	return unmanagedCmd
@@ -56,13 +68,25 @@ func (c *Config) runUnmanagedCmd(cmd *cobra.Command, args []string, sourceState 
 		if err != nil {
 			return err
 		}
-		managed := sourceState.Contains(targetRelPath)
+		sourceStateEntry := sourceState.Get(targetRelPath)
+		managed := sourceStateEntry != nil
 		ignored := sourceState.Ignore(targetRelPath)
 		if !managed && !ignored {
 			unmanagedRelPaths[targetRelPath] = struct{}{}
 		}
-		if fileInfo.IsDir() && (!managed || ignored) {
-			return vfs.SkipDir
+		if fileInfo.IsDir() {
+			switch {
+			case !managed:
+				return vfs.SkipDir
+			case ignored:
+				return vfs.SkipDir
+			case sourceStateEntry != nil:
+				if external, ok := sourceStateEntry.Origin().(*chezmoi.External); ok {
+					if external.Type == chezmoi.ExternalTypeGitRepo {
+						return vfs.SkipDir
+					}
+				}
+			}
 		}
 		return nil
 	}
@@ -76,8 +100,12 @@ func (c *Config) runUnmanagedCmd(cmd *cobra.Command, args []string, sourceState 
 	sortedRelPaths := chezmoi.RelPaths(maps.Keys(unmanagedRelPaths))
 	sort.Sort(sortedRelPaths)
 	for _, relPath := range sortedRelPaths {
-		builder.WriteString(relPath.String())
-		builder.WriteByte('\n')
+		switch c.unmanaged.pathStyle {
+		case pathStyleAbsolute:
+			fmt.Fprintln(&builder, c.DestDirAbsPath.Join(relPath))
+		case pathStyleRelative:
+			fmt.Fprintln(&builder, relPath)
+		}
 	}
 	return c.writeOutputString(builder.String())
 }

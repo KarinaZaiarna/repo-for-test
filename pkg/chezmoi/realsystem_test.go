@@ -5,8 +5,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/alecthomas/assert/v2"
 	vfs "github.com/twpayne/go-vfs/v4"
 
 	"github.com/twpayne/chezmoi/v2/pkg/chezmoitest"
@@ -55,7 +54,7 @@ func TestRealSystemGlob(t *testing.T) {
 		} {
 			t.Run(tc.pattern, func(t *testing.T) {
 				actualMatches, err := system.Glob(tc.pattern)
-				require.NoError(t, err)
+				assert.NoError(t, err)
 				sort.Strings(actualMatches)
 				assert.Equal(t, tc.expectedMatches, pathsToSlashes(actualMatches))
 			})

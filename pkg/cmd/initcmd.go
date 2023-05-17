@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
-	"runtime"
 	"strconv"
 
 	"github.com/go-git/go-git/v5"
@@ -37,59 +36,50 @@ type initCmdConfig struct {
 	ssh               bool
 }
 
-var dotfilesRepoGuesses = []struct {
-	rx                    *regexp.Regexp
-	httpRepoGuessRepl     string
-	httpUsernameGuessRepl string
-	sshRepoGuessRepl      string
+var repoGuesses = []struct {
+	rx                *regexp.Regexp
+	httpRepoGuessRepl string
+	sshRepoGuessRepl  string
 }{
 	{
-		rx:                    regexp.MustCompile(`\A([-0-9A-Za-z]+)\z`),
-		httpRepoGuessRepl:     "https://$1@github.com/$1/dotfiles.git",
-		httpUsernameGuessRepl: "$1",
-		sshRepoGuessRepl:      "git@github.com:$1/dotfiles.git",
+		rx:                regexp.MustCompile(`\A([-0-9A-Za-z]+)\z`),
+		httpRepoGuessRepl: "https://github.com/$1/dotfiles.git",
+		sshRepoGuessRepl:  "git@github.com:$1/dotfiles.git",
 	},
 	{
-		rx:                    regexp.MustCompile(`\A([-0-9A-Za-z]+)/([-0-9A-Za-z]+)(\.git)?\z`),
-		httpRepoGuessRepl:     "https://$1@github.com/$1/$2.git",
-		httpUsernameGuessRepl: "$1",
-		sshRepoGuessRepl:      "git@github.com:$1/$2.git",
+		rx:                regexp.MustCompile(`\A([-0-9A-Za-z]+)/([-\.0-9A-Z_a-z]+?)(\.git)?\z`),
+		httpRepoGuessRepl: "https://github.com/$1/$2.git",
+		sshRepoGuessRepl:  "git@github.com:$1/$2.git",
 	},
 	{
-		rx:                    regexp.MustCompile(`\A([-.0-9A-Za-z]+)/([-0-9A-Za-z]+)\z`),
-		httpRepoGuessRepl:     "https://$2@$1/$2/dotfiles.git",
-		httpUsernameGuessRepl: "$2",
-		sshRepoGuessRepl:      "git@$1:$2/dotfiles.git",
+		rx:                regexp.MustCompile(`\A([-.0-9A-Za-z]+)/([-0-9A-Za-z]+)\z`),
+		httpRepoGuessRepl: "https://$1/$2/dotfiles.git",
+		sshRepoGuessRepl:  "git@$1:$2/dotfiles.git",
 	},
 	{
-		rx:                    regexp.MustCompile(`\A([-0-9A-Za-z]+)/([-0-9A-Za-z]+)/([-.0-9A-Za-z]+)\z`),
-		httpRepoGuessRepl:     "https://$2@$1/$2/$3.git",
-		httpUsernameGuessRepl: "$2",
-		sshRepoGuessRepl:      "git@$1:$2/$3.git",
+		rx:                regexp.MustCompile(`\A([-0-9A-Za-z]+)/([-0-9A-Za-z]+)/([-.0-9A-Za-z]+)\z`),
+		httpRepoGuessRepl: "https://$1/$2/$3.git",
+		sshRepoGuessRepl:  "git@$1:$2/$3.git",
 	},
 	{
-		rx:                    regexp.MustCompile(`\A([-.0-9A-Za-z]+)/([-0-9A-Za-z]+)/([-0-9A-Za-z]+)(\.git)?\z`),
-		httpRepoGuessRepl:     "https://$2@$1/$2/$3.git",
-		httpUsernameGuessRepl: "$2",
-		sshRepoGuessRepl:      "git@$1:$2/$3.git",
+		rx:                regexp.MustCompile(`\A([-.0-9A-Za-z]+)/([-0-9A-Za-z]+)/([-0-9A-Za-z]+)(\.git)?\z`),
+		httpRepoGuessRepl: "https://$1/$2/$3.git",
+		sshRepoGuessRepl:  "git@$1:$2/$3.git",
 	},
 	{
-		rx:                    regexp.MustCompile(`\A(https?://)([-.0-9A-Za-z]+)/([-0-9A-Za-z]+)/([-0-9A-Za-z]+)(\.git)?\z`),
-		httpRepoGuessRepl:     "$1$3@$2/$3/$4.git",
-		httpUsernameGuessRepl: "$3",
-		sshRepoGuessRepl:      "git@$2:$3/$4.git",
+		rx:                regexp.MustCompile(`\A(https?://)([-.0-9A-Za-z]+)/([-0-9A-Za-z]+)/([-0-9A-Za-z]+)(\.git)?\z`),
+		httpRepoGuessRepl: "$1$2/$3/$4.git",
+		sshRepoGuessRepl:  "git@$2:$3/$4.git",
 	},
 	{
-		rx:                    regexp.MustCompile(`\Asr\.ht/~([a-z_][a-z0-9_-]+)\z`),
-		httpRepoGuessRepl:     "https://$1@git.sr.ht/~$1/dotfiles",
-		httpUsernameGuessRepl: "$1",
-		sshRepoGuessRepl:      "git@git.sr.ht:~$1/dotfiles",
+		rx:                regexp.MustCompile(`\Asr\.ht/~([a-z_][a-z0-9_-]+)\z`),
+		httpRepoGuessRepl: "https://git.sr.ht/~$1/dotfiles",
+		sshRepoGuessRepl:  "git@git.sr.ht:~$1/dotfiles",
 	},
 	{
-		rx:                    regexp.MustCompile(`\Asr\.ht/~([a-z_][a-z0-9_-]+)/([-0-9A-Za-z]+)\z`),
-		httpRepoGuessRepl:     "https://$1@git.sr.ht/~$1/$2",
-		httpUsernameGuessRepl: "$1",
-		sshRepoGuessRepl:      "git@git.sr.ht:~$1/$2",
+		rx:                regexp.MustCompile(`\Asr\.ht/~([a-z_][a-z0-9_-]+)/([-0-9A-Za-z]+)\z`),
+		httpRepoGuessRepl: "https://git.sr.ht/~$1/$2",
+		sshRepoGuessRepl:  "git@git.sr.ht:~$1/$2",
 	},
 }
 
@@ -131,7 +121,7 @@ func (c *Config) newInitCmd() *cobra.Command {
 	flags.BoolVarP(&c.init.purge, "purge", "p", c.init.purge, "Purge config and source directories after running")
 	flags.BoolVarP(&c.init.purgeBinary, "purge-binary", "P", c.init.purgeBinary, "Purge chezmoi binary after running")
 	flags.BoolVar(&c.init.recurseSubmodules, "recurse-submodules", c.init.recurseSubmodules, "Checkout submodules recursively") //nolint:lll
-	flags.BoolVar(&c.init.ssh, "ssh", c.init.ssh, "Use ssh instead of https when guessing dotfile repo URL")
+	flags.BoolVar(&c.init.ssh, "ssh", c.init.ssh, "Use ssh instead of https when guessing repo URL")
 
 	return initCmd
 }
@@ -147,10 +137,7 @@ func (c *Config) runInitCmd(cmd *cobra.Command, args []string) error {
 
 	// If we're not in a working tree then init it or clone it.
 	gitDirAbsPath := c.WorkingTreeAbsPath.JoinString(git.GitDirName)
-	switch fileInfo, err := c.baseSystem.Stat(gitDirAbsPath); {
-	case err == nil && fileInfo.IsDir():
-	case err == nil && !fileInfo.IsDir():
-		return fmt.Errorf("%s: not a directory", gitDirAbsPath)
+	switch _, err := c.baseSystem.Stat(gitDirAbsPath); {
 	case errors.Is(err, fs.ErrNotExist):
 		workingTreeRawPath, err := c.baseSystem.RawPath(c.WorkingTreeAbsPath)
 		if err != nil {
@@ -168,14 +155,14 @@ func (c *Config) runInitCmd(cmd *cobra.Command, args []string) error {
 				return err
 			}
 		} else {
-			var username, dotfilesRepoURL string
+			var repoURLStr string
 			if c.init.guessRepoURL {
-				username, dotfilesRepoURL = guessDotfilesRepoURL(args[0], c.init.ssh)
+				repoURLStr = guessRepoURL(args[0], c.init.ssh)
 			} else {
-				dotfilesRepoURL = args[0]
+				repoURLStr = args[0]
 			}
 			if useBuiltinGit {
-				if err := c.builtinGitClone(username, dotfilesRepoURL, workingTreeRawPath); err != nil {
+				if err := c.builtinGitClone(repoURLStr, workingTreeRawPath); err != nil {
 					return err
 				}
 			} else {
@@ -198,7 +185,7 @@ func (c *Config) runInitCmd(cmd *cobra.Command, args []string) error {
 					)
 				}
 				args = append(args,
-					dotfilesRepoURL,
+					repoURLStr,
 					workingTreeRawPath.String(),
 				)
 				if err := c.run(chezmoi.EmptyAbsPath, c.Git.Command, args); err != nil {
@@ -214,21 +201,14 @@ func (c *Config) runInitCmd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	var err error
-	c.SourceDirAbsPath, err = c.getSourceDirAbsPath(&getSourceDirAbsPathOptions{
-		refresh: true,
-	})
-	if err != nil {
-		return err
-	}
-
-	if err := c.createAndReloadConfigFile(); err != nil {
+	if err := c.createAndReloadConfigFile(cmd); err != nil {
 		return err
 	}
 
 	// Apply.
 	if c.init.apply {
 		if err := c.applyArgs(cmd.Context(), c.destSystem, c.DestDirAbsPath, noArgs, applyArgsOptions{
+			cmd:          cmd,
 			filter:       c.init.filter,
 			recursive:    false,
 			umask:        c.Umask,
@@ -239,9 +219,14 @@ func (c *Config) runInitCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Purge.
-	if c.init.purge {
-		if err := c.doPurge(&purgeOptions{
-			binary: runtime.GOOS != "windows" && c.init.purgeBinary,
+	if c.init.purge || c.init.purgeBinary {
+		if err := c.doPurge(&doPurgeOptions{
+			binary:          c.init.purgeBinary,
+			cache:           c.init.purge,
+			config:          c.init.purge,
+			persistentState: c.init.purge,
+			sourceDir:       c.init.purge,
+			workingTree:     c.init.purge,
 		}); err != nil {
 			return err
 		}
@@ -251,8 +236,8 @@ func (c *Config) runInitCmd(cmd *cobra.Command, args []string) error {
 }
 
 // builtinGitClone clones a repo using the builtin git command.
-func (c *Config) builtinGitClone(username, url string, workingTreeRawPath chezmoi.AbsPath) error {
-	endpoint, err := transport.NewEndpoint(url)
+func (c *Config) builtinGitClone(repoURLStr string, workingTreeRawPath chezmoi.AbsPath) error {
+	endpoint, err := transport.NewEndpoint(repoURLStr)
 	if err != nil {
 		return err
 	}
@@ -266,7 +251,7 @@ func (c *Config) builtinGitClone(username, url string, workingTreeRawPath chezmo
 		referenceName = plumbing.NewBranchReferenceName(c.init.branch)
 	}
 	cloneOptions := git.CloneOptions{
-		URL:               url,
+		URL:               repoURLStr,
 		Depth:             c.init.depth,
 		ReferenceName:     referenceName,
 		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
@@ -283,15 +268,12 @@ func (c *Config) builtinGitClone(username, url string, workingTreeRawPath chezmo
 			return err
 		}
 
-		if _, err := fmt.Fprintf(c.stdout, "chezmoi: %s: %v\n", url, err); err != nil {
+		if _, err := fmt.Fprintf(c.stdout, "chezmoi: %s: %v\n", repoURLStr, err); err != nil {
 			return err
 		}
 		var basicAuth http.BasicAuth
-		if basicAuth.Username, err = c.readString("Username? ", &username); err != nil {
+		if basicAuth.Username, err = c.readString("Username? ", nil); err != nil {
 			return err
-		}
-		if basicAuth.Username == "" {
-			basicAuth.Username = username
 		}
 		if basicAuth.Password, err = c.readPassword("Password? "); err != nil {
 			return err
@@ -352,22 +334,17 @@ func (o loggableGitCloneOptions) MarshalZerologObject(e *zerolog.Event) {
 	}
 }
 
-// guessDotfilesRepoURL guesses the user's username and dotfile repo from arg.
-func guessDotfilesRepoURL(arg string, ssh bool) (username, repo string) {
-	for _, dotfileRepoGuess := range dotfilesRepoGuesses {
-		if !dotfileRepoGuess.rx.MatchString(arg) {
-			continue
-		}
+// guessRepoURL guesses the user's username and repo from arg.
+func guessRepoURL(arg string, ssh bool) string {
+	for _, repoGuess := range repoGuesses {
 		switch {
-		case ssh && dotfileRepoGuess.sshRepoGuessRepl != "":
-			repo = dotfileRepoGuess.rx.ReplaceAllString(arg, dotfileRepoGuess.sshRepoGuessRepl)
-			return
-		case !ssh && dotfileRepoGuess.httpRepoGuessRepl != "":
-			username = dotfileRepoGuess.rx.ReplaceAllString(arg, dotfileRepoGuess.httpUsernameGuessRepl)
-			repo = dotfileRepoGuess.rx.ReplaceAllString(arg, dotfileRepoGuess.httpRepoGuessRepl)
-			return
+		case !repoGuess.rx.MatchString(arg):
+			continue
+		case ssh && repoGuess.sshRepoGuessRepl != "":
+			return repoGuess.rx.ReplaceAllString(arg, repoGuess.sshRepoGuessRepl)
+		case !ssh && repoGuess.httpRepoGuessRepl != "":
+			return repoGuess.rx.ReplaceAllString(arg, repoGuess.httpRepoGuessRepl)
 		}
 	}
-	repo = arg
-	return
+	return arg
 }

@@ -4,8 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/alecthomas/assert/v2"
 
 	"github.com/twpayne/chezmoi/v2/pkg/chezmoitest"
 )
@@ -62,7 +61,7 @@ func TestLastpassParseNote(t *testing.T) {
 	} {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			actual, err := lastpassParseNote(tc.note)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, actual)
 		})
 	}

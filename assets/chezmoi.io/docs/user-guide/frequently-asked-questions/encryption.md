@@ -12,13 +12,14 @@ This can be achieved with the following process:
 4. Configure chezmoi to use the private key.
 5. Add encrypted files.
 
-First, change to chezmoi's source directory:
+First, change to chezmoi's root directory:
 
 ```console
-$ chezmoi cd
+$ chezmoi cd ~
 ```
 
-Generate an age private key encrypted with a passphrase with the command:
+Generate an age private key encrypted with a passphrase in the file
+`key.txt.age` with the command:
 
 ```console
 $ age-keygen | age --passphrase > key.txt.age
@@ -62,17 +63,17 @@ EOF
 
 `age.recipient` must be your public key from above.
 
-When you run `chezmoi init --apply` to generate the chezmoi's config file, you
-will be prompted for your passphrase to decrypt the private key:
+Run `chezmoi init --apply` to generate the chezmoi's config file and decrypt the
+private key:
 
-```
+```console
 $ chezmoi init --apply
 Enter passphrase:
 ```
 
 At this stage everything is configured and `git status` should report:
 
-```
+```console
 $ git status
 On branch main
 Untracked files:
@@ -85,11 +86,16 @@ Untracked files:
 nothing added to commit but untracked files present (use "git add" to track)
 ```
 
-If you're happy with the changes you can commit them.
+If you're happy with the changes you can commit them. All four files should be
+committed.
 
 Add files that you want to encrypt using the `--encrypt` argument to `chezmoi
 add`, for example:
 
-```
+```console
 $ chezmoi add --encrypt ~/.ssh/id_rsa
 ```
+
+When you run `chezmoi init` on a new machine you will be prompted to enter your
+passphrase once to decrypt `key.txt.age`. Your decrypted private key will be
+stored in `~/key.txt`.

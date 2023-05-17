@@ -5,10 +5,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"gopkg.in/ini.v1"
+	"github.com/alecthomas/assert/v2"
 
+	"github.com/twpayne/chezmoi/v2/pkg/chezmoiassert"
 	"github.com/twpayne/chezmoi/v2/pkg/chezmoitest"
 )
 
@@ -50,6 +49,145 @@ func TestCommentTemplateFunc(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			c := &Config{}
 			assert.Equal(t, tc.expected, c.commentTemplateFunc(prefix, tc.s))
+		})
+	}
+}
+
+func TestDeleteValueAtPathTemplateFunc(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		dict        map[string]any
+		path        string
+		expected    any
+		expectedErr string
+	}{
+		{
+			name:        "empty",
+			expectedErr: "empty path",
+		},
+		{
+			name: "outer",
+			dict: map[string]any{
+				"key": "value",
+			},
+			path:     "key",
+			expected: map[string]any{},
+		},
+		{
+			name: "inner",
+			dict: map[string]any{
+				"key1": map[string]any{
+					"key2a": "value2a",
+					"key2b": "value2b",
+				},
+			},
+			path: "key1.key2a",
+			expected: map[string]any{
+				"key1": map[string]any{
+					"key2b": "value2b",
+				},
+			},
+		},
+		{
+			name: "missing",
+			dict: map[string]any{
+				"key": "value",
+			},
+			path: "missingKey",
+			expected: map[string]any{
+				"key": "value",
+			},
+		},
+		{
+			name: "missing_inner",
+			dict: map[string]any{
+				"key1": map[string]any{
+					"key2": 0,
+				},
+			},
+			path: "key1.key3",
+			expected: map[string]any{
+				"key1": map[string]any{
+					"key2": 0,
+				},
+			},
+		},
+		{
+			name: "missing_depth2",
+			dict: map[string]any{
+				"key1": map[string]any{
+					"key2": map[string]any{
+						"key3": 0,
+					},
+				},
+			},
+			path: "key1.key2.missingKey",
+			expected: map[string]any{
+				"key1": map[string]any{
+					"key2": map[string]any{
+						"key3": 0,
+					},
+				},
+			},
+		},
+		{
+			name: "not_an_inner_dict",
+			dict: map[string]any{
+				"key1": map[string]any{
+					"key2": 0,
+				},
+			},
+			path: "key1.key2.key3",
+			expected: map[string]any{
+				"key1": map[string]any{
+					"key2": 0,
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var c Config
+			if tc.expectedErr == "" {
+				actual := c.deleteValueAtPathTemplateFunc(tc.path, tc.dict)
+				assert.Equal(t, tc.expected, actual)
+			} else {
+				chezmoiassert.PanicsWithErrorString(t, tc.expectedErr, func() {
+					c.deleteValueAtPathTemplateFunc(tc.path, tc.dict)
+				})
+			}
+		})
+	}
+}
+
+func TestPruneEmptyDicts(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		dict     map[string]any
+		expected map[string]any
+	}{
+		{
+			name:     "nil",
+			dict:     nil,
+			expected: nil,
+		},
+		{
+			name:     "empty",
+			dict:     map[string]any{},
+			expected: map[string]any{},
+		},
+		{
+			name: "nested_empty",
+			dict: map[string]any{
+				"key1": map[string]any{},
+				"key2": 0,
+			},
+			expected: map[string]any{
+				"key2": 0,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, (&Config{}).pruneEmptyDictsTemplateFunc(tc.dict))
 		})
 	}
 }
@@ -213,7 +351,7 @@ func TestSetValueAtPathTemplateFunc(t *testing.T) {
 				actual := c.setValueAtPathTemplateFunc(tc.path, tc.value, tc.dict)
 				assert.Equal(t, tc.expected, actual)
 			} else {
-				assert.PanicsWithError(t, tc.expectedErr, func() {
+				chezmoiassert.PanicsWithErrorString(t, tc.expectedErr, func() {
 					c.setValueAtPathTemplateFunc(tc.path, tc.value, tc.dict)
 				})
 			}
@@ -231,9 +369,7 @@ func TestFromIniTemplateFunc(t *testing.T) {
 				`key = value`,
 			),
 			expected: map[string]any{
-				ini.DefaultSection: map[string]any{
-					"key": "value",
-				},
+				"key": "value",
 			},
 		},
 		{
@@ -242,7 +378,19 @@ func TestFromIniTemplateFunc(t *testing.T) {
 				`sectionKey = sectionValue`,
 			),
 			expected: map[string]any{
-				ini.DefaultSection: map[string]any{},
+				"section": map[string]any{
+					"sectionKey": "sectionValue",
+				},
+			},
+		},
+		{
+			text: chezmoitest.JoinLines(
+				`key = value`,
+				`[section]`,
+				`sectionKey = sectionValue`,
+			),
+			expected: map[string]any{
+				"key": "value",
 				"section": map[string]any{
 					"sectionKey": "sectionValue",
 				},
@@ -619,7 +767,7 @@ func TestNeedsQuote(t *testing.T) {
 
 func TestQuoteListTemplateFunc(t *testing.T) {
 	c, err := newConfig()
-	require.NoError(t, err)
+	assert.NoError(t, err)
 	actual := c.quoteListTemplateFunc([]any{
 		[]byte{65},
 		"b",

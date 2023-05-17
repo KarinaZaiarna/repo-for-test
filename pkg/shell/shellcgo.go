@@ -1,5 +1,4 @@
 //go:build (cgo && aix) || (cgo && android) || (cgo && darwin) || (cgo && dragonfly) || (cgo && freebsd) || (cgo && illumos) || (cgo && linux) || (cgo && netbsd) || (cgo && openbsd) || (cgo && solaris)
-// +build cgo,aix cgo,android cgo,darwin cgo,dragonfly cgo,freebsd cgo,illumos cgo,linux cgo,netbsd cgo,openbsd cgo,solaris
 
 package shell
 
@@ -29,8 +28,7 @@ func cgoGetUserShell(name string) (string, bool) {
 			buf    = make([]byte, buflen)
 			result *C.struct_passwd
 		)
-		//nolint:gocritic
-		rc := C.getpwnam_r(cName, &pwd, (*C.char)(unsafe.Pointer(&buf[0])), C.size_t(buflen), &result)
+		rc := C.getpwnam_r(cName, &pwd, (*C.char)(unsafe.Pointer(&buf[0])), C.size_t(buflen), &result) //nolint:gocritic
 		C.free(unsafe.Pointer(cName))
 
 		switch rc {

@@ -1,13 +1,12 @@
 package archivetest
 
 import (
-	"archive/zip"
 	"bytes"
 	"io/fs"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/alecthomas/assert/v2"
+	"github.com/klauspost/compress/zip"
 )
 
 func TestNewZip(t *testing.T) {
@@ -29,14 +28,14 @@ func TestNewZip(t *testing.T) {
 			},
 		},
 	})
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	zipReader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	require.NoError(t, err)
+	assert.NoError(t, err)
 
 	fileIndex := 0
 	nextFile := func() *zip.File {
-		require.LessOrEqual(t, fileIndex, len(zipReader.File))
+		assert.True(t, fileIndex <= len(zipReader.File))
 		zipFile := zipReader.File[fileIndex]
 		fileIndex++
 		return zipFile
@@ -75,5 +74,5 @@ func TestNewZip(t *testing.T) {
 	assert.Equal(t, fs.ModeSymlink, zipFile.FileInfo().Mode().Type())
 	assert.Equal(t, uint64(len("file")), zipFile.UncompressedSize64)
 
-	assert.Len(t, zipReader.File, fileIndex)
+	assert.Equal(t, fileIndex, len(zipReader.File))
 }

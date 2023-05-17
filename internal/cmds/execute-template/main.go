@@ -16,7 +16,7 @@ import (
 	"text/template"
 
 	"github.com/Masterminds/sprig/v3"
-	"github.com/google/go-github/v48/github"
+	"github.com/google/go-github/v52/github"
 	"github.com/google/renameio/v2/maybe"
 	"gopkg.in/yaml.v3"
 
@@ -29,7 +29,7 @@ var (
 )
 
 type gitHubClient struct {
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx
 	client *github.Client
 }
 

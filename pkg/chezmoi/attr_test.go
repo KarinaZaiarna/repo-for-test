@@ -4,39 +4,47 @@ import (
 	"io/fs"
 	"testing"
 
+	"github.com/alecthomas/assert/v2"
 	"github.com/muesli/combinator"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDirAttr(t *testing.T) {
-	testData := struct {
+	var dirAttrs []DirAttr
+	targetNames := []string{
+		".dir",
+		"dir.tmpl",
+		"dir",
+		"exact_dir",
+		"empty_dir",
+		"encrypted_dir",
+		"executable_dir",
+		"once_dir",
+		"run_dir",
+		"run_once_dir",
+		"symlink_dir",
+	}
+	assert.NoError(t, combinator.Generate(&dirAttrs, struct {
+		Type       SourceDirTargetType
 		TargetName []string
 		Exact      []bool
+		External   []bool
 		Private    []bool
 		ReadOnly   []bool
-		Remove     []bool
 	}{
-		TargetName: []string{
-			".dir",
-			"dir.tmpl",
-			"dir",
-			"exact_dir",
-			"empty_dir",
-			"encrypted_dir",
-			"executable_dir",
-			"once_dir",
-			"run_dir",
-			"run_once_dir",
-			"symlink_dir",
-		},
-		Exact:    []bool{false, true},
-		Private:  []bool{false, true},
-		ReadOnly: []bool{false, true},
-		Remove:   []bool{false, true},
-	}
-	var dirAttrs []DirAttr
-	require.NoError(t, combinator.Generate(&dirAttrs, testData))
+		Type:       SourceDirTypeDir,
+		TargetName: targetNames,
+		Exact:      []bool{false, true},
+		External:   []bool{false, true},
+		Private:    []bool{false, true},
+		ReadOnly:   []bool{false, true},
+	}))
+	assert.NoError(t, combinator.Generate(&dirAttrs, struct {
+		Type       SourceDirTargetType
+		TargetName []string
+	}{
+		Type:       SourceDirTypeRemove,
+		TargetName: targetNames,
+	}))
 	for _, dirAttr := range dirAttrs {
 		actualSourceName := dirAttr.SourceName()
 		actualDirAttr := parseDirAttr(actualSourceName)
@@ -89,13 +97,15 @@ func TestFileAttr(t *testing.T) {
 		"modify_name",
 		"name.literal",
 		"name",
+		"remove_",
 		"run_name",
 		"symlink_name",
 		"template.tmpl",
 	}
-	require.NoError(t, combinator.Generate(&fileAttrs, struct {
+	assert.NoError(t, combinator.Generate(&fileAttrs, struct {
 		Type       SourceFileTargetType
 		TargetName []string
+		Empty      []bool
 		Encrypted  []bool
 		Executable []bool
 		Private    []bool
@@ -104,13 +114,14 @@ func TestFileAttr(t *testing.T) {
 	}{
 		Type:       SourceFileTypeCreate,
 		TargetName: []string{},
+		Empty:      []bool{false, true},
 		Encrypted:  []bool{false, true},
 		Executable: []bool{false, true},
 		Private:    []bool{false, true},
 		ReadOnly:   []bool{false, true},
 		Template:   []bool{false, true},
 	}))
-	require.NoError(t, combinator.Generate(&fileAttrs, struct {
+	assert.NoError(t, combinator.Generate(&fileAttrs, struct {
 		Type       SourceFileTargetType
 		TargetName []string
 		Empty      []bool
@@ -129,7 +140,7 @@ func TestFileAttr(t *testing.T) {
 		ReadOnly:   []bool{false, true},
 		Template:   []bool{false, true},
 	}))
-	require.NoError(t, combinator.Generate(&fileAttrs, struct {
+	assert.NoError(t, combinator.Generate(&fileAttrs, struct {
 		Type       SourceFileTargetType
 		TargetName []string
 		Encrypted  []bool
@@ -146,14 +157,14 @@ func TestFileAttr(t *testing.T) {
 		ReadOnly:   []bool{false, true},
 		Template:   []bool{false, true},
 	}))
-	require.NoError(t, combinator.Generate(&fileAttrs, struct {
+	assert.NoError(t, combinator.Generate(&fileAttrs, struct {
 		Type       SourceFileTargetType
 		TargetName []string
 	}{
 		Type:       SourceFileTypeRemove,
 		TargetName: targetNames,
 	}))
-	require.NoError(t, combinator.Generate(&fileAttrs, struct {
+	assert.NoError(t, combinator.Generate(&fileAttrs, struct {
 		Type       SourceFileTargetType
 		Condition  []ScriptCondition
 		TargetName []string
@@ -164,7 +175,7 @@ func TestFileAttr(t *testing.T) {
 		TargetName: targetNames,
 		Order:      []ScriptOrder{ScriptOrderBefore, ScriptOrderDuring, ScriptOrderAfter},
 	}))
-	require.NoError(t, combinator.Generate(&fileAttrs, struct {
+	assert.NoError(t, combinator.Generate(&fileAttrs, struct {
 		Type       SourceFileTargetType
 		TargetName []string
 	}{

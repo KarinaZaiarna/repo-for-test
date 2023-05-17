@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/bradenhilton/mozillainstallhash"
+	"github.com/itchyny/gojq"
 	"golang.org/x/exp/constraints"
 	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
@@ -95,6 +98,29 @@ func (c *Config) commentTemplateFunc(prefix, s string) string {
 	return builder.String()
 }
 
+func (c *Config) deleteValueAtPathTemplateFunc(path string, dict map[string]any) any {
+	keys, lastKey, err := keysFromPath(path)
+	if err != nil {
+		panic(err)
+	}
+
+	currentMap := dict
+	for _, key := range keys {
+		value, ok := currentMap[key]
+		if !ok {
+			return dict
+		}
+		nestedMap, ok := value.(map[string]any)
+		if !ok {
+			return dict
+		}
+		currentMap = nestedMap
+	}
+	delete(currentMap, lastKey)
+
+	return dict
+}
+
 func (c *Config) eqFoldTemplateFunc(first, second string, more ...string) bool {
 	if strings.EqualFold(first, second) {
 		return true
@@ -113,6 +139,14 @@ func (c *Config) fromIniTemplateFunc(s string) map[string]any {
 		panic(err)
 	}
 	return iniFileToMap(file)
+}
+
+func (c *Config) fromJsoncTemplateFunc(s string) any {
+	var data any
+	if err := chezmoi.FormatJSONC.Unmarshal([]byte(s), &data); err != nil {
+		panic(err)
+	}
+	return data
 }
 
 func (c *Config) fromTomlTemplateFunc(s string) any {
@@ -156,6 +190,18 @@ func (c *Config) globTemplateFunc(pattern string) []string {
 		panic(err)
 	}
 	return matches
+}
+
+func (c *Config) hexDecodeTemplateFunc(s string) string {
+	result, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return string(result)
+}
+
+func (c *Config) hexEncodeTemplateFunc(s string) string {
+	return hex.EncodeToString([]byte(s))
 }
 
 func (c *Config) includeTemplateFunc(filename string) string {
@@ -232,6 +278,30 @@ func (c *Config) joinPathTemplateFunc(elem ...string) string {
 	return filepath.Join(elem...)
 }
 
+func (c *Config) jqTemplateFunc(source string, input any) any {
+	query, err := gojq.Parse(source)
+	if err != nil {
+		panic(err)
+	}
+	code, err := gojq.Compile(query)
+	if err != nil {
+		panic(err)
+	}
+	iter := code.Run(input)
+	var result []any
+	for {
+		value, ok := iter.Next()
+		if !ok {
+			break
+		}
+		if err, ok := value.(error); ok {
+			panic(err)
+		}
+		result = append(result, value)
+	}
+	return result
+}
+
 func (c *Config) lookPathTemplateFunc(file string) string {
 	switch path, err := chezmoi.LookPath(file); {
 	case err == nil:
@@ -240,6 +310,17 @@ func (c *Config) lookPathTemplateFunc(file string) string {
 		return ""
 	case errors.Is(err, fs.ErrNotExist):
 		return ""
+	default:
+		panic(err)
+	}
+}
+
+func (c *Config) lstatTemplateFunc(name string) any {
+	switch fileInfo, err := c.fileSystem.Lstat(name); {
+	case err == nil:
+		return fileInfoToMap(fileInfo)
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
 	default:
 		panic(err)
 	}
@@ -263,6 +344,11 @@ func (c *Config) outputTemplateFunc(name string, args ...string) string {
 	// FIXME we should be able to return output directly, but
 	// github.com/Masterminds/sprig's trim function only accepts strings
 	return string(output)
+}
+
+func (c *Config) pruneEmptyDictsTemplateFunc(dict map[string]any) map[string]any {
+	pruneEmptyMaps(dict)
+	return dict
 }
 
 func (c *Config) quoteListTemplateFunc(list []any) []string {
@@ -345,14 +431,7 @@ func (c *Config) setValueAtPathTemplateFunc(path, value, dict any) any {
 func (c *Config) statTemplateFunc(name string) any {
 	switch fileInfo, err := c.fileSystem.Stat(name); {
 	case err == nil:
-		return map[string]any{
-			"name":    fileInfo.Name(),
-			"size":    fileInfo.Size(),
-			"mode":    int(fileInfo.Mode()),
-			"perm":    int(fileInfo.Mode().Perm()),
-			"modTime": fileInfo.ModTime().Unix(),
-			"isDir":   fileInfo.IsDir(),
-		}
+		return fileInfoToMap(fileInfo)
 	case errors.Is(err, fs.ErrNotExist):
 		return nil
 	default:
@@ -363,6 +442,33 @@ func (c *Config) statTemplateFunc(name string) any {
 func (c *Config) toIniTemplateFunc(data map[string]any) string {
 	var builder strings.Builder
 	if err := writeIniMap(&builder, data, ""); err != nil {
+		panic(err)
+	}
+	return builder.String()
+}
+
+func (c *Config) toPrettyJsonTemplateFunc(args ...any) string { //nolint:revive,stylecheck
+	var (
+		indent = "  "
+		value  any
+	)
+	switch len(args) {
+	case 1:
+		value = args[0]
+	case 2:
+		var ok bool
+		indent, ok = args[0].(string)
+		if !ok {
+			panic(fmt.Errorf("arg 1: expected a string, got a %T", args[0]))
+		}
+		value = args[1]
+	default:
+		panic(fmt.Errorf("expected 1 or 2 arguments, got %d", len(args)))
+	}
+	var builder strings.Builder
+	encoder := json.NewEncoder(&builder)
+	encoder.SetIndent("", indent)
+	if err := encoder.Encode(value); err != nil {
 		panic(err)
 	}
 	return builder.String()
@@ -384,10 +490,28 @@ func (c *Config) toYamlTemplateFunc(data any) string {
 	return string(yaml)
 }
 
+func fileInfoToMap(fileInfo fs.FileInfo) map[string]any {
+	return map[string]any{
+		"name":    fileInfo.Name(),
+		"size":    fileInfo.Size(),
+		"mode":    int(fileInfo.Mode()),
+		"perm":    int(fileInfo.Mode().Perm()),
+		"modTime": fileInfo.ModTime().Unix(),
+		"isDir":   fileInfo.IsDir(),
+		"type":    chezmoi.FileModeTypeNames[fileInfo.Mode()&fs.ModeType],
+	}
+}
+
 func iniFileToMap(file *ini.File) map[string]any {
 	m := make(map[string]any)
 	for _, section := range file.Sections() {
-		m[section.Name()] = iniSectionToMap(section)
+		if section.Name() == ini.DefaultSection {
+			for _, k := range section.Keys() {
+				m[k.Name()] = k.Value()
+			}
+		} else {
+			m[section.Name()] = iniSectionToMap(section)
+		}
 	}
 	return m
 }
@@ -533,6 +657,21 @@ func needsQuote(s string) bool {
 		return true
 	}
 	return false
+}
+
+// pruneEmptyMaps prunes all empty maps from m and returns if m is now empty
+// itself.
+func pruneEmptyMaps(m map[string]any) bool {
+	for key, value := range m {
+		nestedMap, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		if pruneEmptyMaps(nestedMap) {
+			delete(m, key)
+		}
+	}
+	return len(m) == 0
 }
 
 func sortedKeys[K constraints.Ordered, V any](m map[K]V) []K {

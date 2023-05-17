@@ -3,15 +3,15 @@ package chezmoi
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/alecthomas/assert/v2"
 )
 
 func TestFormats(t *testing.T) {
-	assert.Contains(t, FormatsByName, "json")
-	assert.Contains(t, FormatsByName, "toml")
-	assert.Contains(t, FormatsByName, "yaml")
-	assert.NotContains(t, FormatsByName, "yml")
+	assert.NotZero(t, FormatsByName["json"])
+	assert.NotZero(t, FormatsByName["jsonc"])
+	assert.NotZero(t, FormatsByName["toml"])
+	assert.NotZero(t, FormatsByName["yaml"])
+	assert.Zero(t, FormatsByName["yml"])
 }
 
 func TestFormatRoundTrip(t *testing.T) {
@@ -24,6 +24,7 @@ func TestFormatRoundTrip(t *testing.T) {
 	}
 
 	for _, format := range []Format{
+		formatJSONC{},
 		formatJSON{},
 		formatTOML{},
 		formatYAML{},
@@ -39,9 +40,9 @@ func TestFormatRoundTrip(t *testing.T) {
 				String: "string",
 			}
 			data, err := format.Marshal(v)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			var actualValue value
-			require.NoError(t, format.Unmarshal(data, &actualValue))
+			assert.NoError(t, format.Unmarshal(data, &actualValue))
 			assert.Equal(t, v, actualValue)
 		})
 	}

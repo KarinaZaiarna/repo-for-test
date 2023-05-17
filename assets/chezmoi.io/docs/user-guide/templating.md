@@ -31,8 +31,8 @@ These come from a variety of sources (later data overwrite earlier ones):
 * Variables populated by chezmoi are in `.chezmoi`, for example `.chezmoi.os`.
 
 * Variables created by you in the `.chezmoidata.$FORMAT` configuration file.
-  The various supported formats (json, toml and yaml) are read in alphabetical
-  order.
+  The various supported formats (`json`, `jsonc`, `toml` and `yaml`) are read in
+  alphabetical order.
 
 * Variables created by you in the `data` section of the configuration file.
 
@@ -47,14 +47,6 @@ There are several ways to create a template:
 
     ```console
     $ chezmoi add --template ~/.zshrc
-    ```
-
-* When adding a file for the first time, you can pass the `--autotemplate`
-  argument, which tells chezmoi to make the file as a template and automatically
-  replace variables that chezmoi knows about, for example:
-
-    ```console
-    $ chezmoi add --autotemplate ~/.zshrc
     ```
 
 * If a file is already managed by chezmoi, but is not a template, you can make

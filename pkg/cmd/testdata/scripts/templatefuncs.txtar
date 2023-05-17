@@ -3,6 +3,8 @@
 [!windows] chmod 755 bin/ioreg
 [windows] unix2dos bin/chezmoi-output-test.cmd
 
+symlink $HOME/symlink -> dir
+
 # test comment template function
 exec chezmoi execute-template '{{ "line1\nline2" | comment "# " }}'
 rmfinalnewline golden/comment
@@ -12,13 +14,31 @@ cmp stdout golden/comment
 exec chezmoi execute-template '{{ completion "zsh" }}'
 stdout '^# zsh completion for chezmoi'
 
+# test deleteValueAtPath template function
+exec chezmoi execute-template '{{ dict "a" (dict "b" (dict "c" 1 "d" 2)) | deleteValueAtPath "a.b.c" | toJson }}'
+rmfinalnewline golden/deleteValueAtPath
+cmp stdout golden/deleteValueAtPath
+
 # test eqFold template function
 exec chezmoi execute-template '{{ eqFold "foo" "Foo" "FOO" }}'
 stdout '^true$'
 
+# test fromJsonc template function
+stdin golden/example.jsonc
+exec chezmoi execute-template --with-stdin '{{ fromJsonc .chezmoi.stdin | toJson }}'
+stdout '{"key":1}'
+
 # test glob template function
 exec chezmoi execute-template '{{ glob "*.txt" | join "\n" }}{{ "\n" }}'
 cmp stdout golden/glob
+
+# test hexDecode template function
+exec chezmoi execute-template '{{ "6578616d706c65" | hexDecode }}'
+stdout '^example$'
+
+# test hexEncode template function
+exec chezmoi execute-template '{{ "example" | hexEncode }}'
+stdout '^6578616d706c65$'
 
 # test ioreg template function
 [darwin] exec chezmoi execute-template '{{ index ioreg "IOKitBuildVersion" }}'
@@ -44,6 +64,10 @@ stdout ^data$
 exec chezmoi execute-template '{{ joinPath "a" "b" }}'
 stdout a${/}b
 
+# test jq template function
+exec chezmoi execute-template '{{ dict "key" "value" | jq ".key" | first }}'
+stdout ^value$
+
 # test lookPath template function to find in PATH
 exec chezmoi execute-template '{{ lookPath "go" }}'
 stdout go$exe
@@ -51,6 +75,10 @@ stdout go$exe
 # test lookPath template function to check if file exists
 exec chezmoi execute-template '{{ lookPath "/non-existing-file" }}'
 ! stdout .
+
+# test lstat template function
+exec chezmoi execute-template '{{ (joinPath .chezmoi.homeDir "symlink" | lstat).type }}'
+stdout ^symlink$
 
 # test mozillaInstallHash template function
 exec chezmoi execute-template '{{ mozillaInstallHash "/Applications/Firefox.app/Contents/MacOS" }}'
@@ -64,6 +92,11 @@ stdout 2656FF1E876E9973
 [!windows] ! exec chezmoi execute-template '{{ output "false" }}'
 [!(windows||illumos)] stderr 'error calling output: .*/false: exit status 1'
 [illumos] stderr 'error calling output: .*/false: exit status 255'
+
+# test pruneEmptyDicts template function
+exec chezmoi execute-template '{{ dict "key1" "value1" "key2" (dict) | pruneEmptyDicts | toJson }}'
+rmfinalnewline golden/pruneEmptyDicts
+cmp stdout golden/pruneEmptyDicts
 
 # test replaceAllRegex template function
 exec chezmoi execute-template '{{ "foo bar baz" | replaceAllRegex "ba" "BA" }}'
@@ -79,7 +112,7 @@ exec chezmoi execute-template '{{ dict "key" "value" "section" (dict "subkey" "s
 cmp stdout golden/toIni
 
 # test stat template function
-exec chezmoi execute-template '{{ (stat ".").isDir }}'
+exec chezmoi execute-template '{{ (joinPath .chezmoi.homeDir "symlink" | stat).isDir }}'
 stdout true
 
 # test that the output template function returns a command's output
@@ -96,6 +129,10 @@ stdout '^value$'
 # test toToml template function
 exec chezmoi execute-template '{{ dict "key" "value" | toToml }}'
 stdout '^key = .value.$'
+
+# test toPrettyJson template function
+exec chezmoi execute-template '{{ dict "a" (dict "b" "c") | toPrettyJson "    " }}'
+cmp stdout golden/toPrettyJson
 
 # test fromYaml template function
 exec chezmoi execute-template '{{ (fromYaml "key1: value1\nkey2: value2").key2 }}'
@@ -161,6 +198,12 @@ echo '</plist>'
 -- golden/comment --
 # line1
 # line2
+-- golden/deleteValueAtPath --
+{"a":{"b":{"d":2}}}
+-- golden/example.jsonc --
+{
+  "key": 1, // Comment
+}
 -- golden/expected --
 255
 -- golden/glob --
@@ -170,6 +213,8 @@ file2.txt
 # contents of .include
 -- golden/include-relpath --
 # contents of .local/share/chezmoi/.include
+-- golden/pruneEmptyDicts --
+{"key1":"value1"}
 -- golden/setValueAtPath --
 {"key1":{"key2":"value2"}}
 -- golden/toIni --
@@ -177,6 +222,12 @@ key = value
 
 [section]
 subkey = subvalue
+-- golden/toPrettyJson --
+{
+    "a": {
+        "b": "c"
+    }
+}
 -- home/user/.include --
 # contents of .include
 -- home/user/.local/share/chezmoi/.chezmoitemplates/template --
@@ -187,5 +238,6 @@ subkey = subvalue
 chezmoi:template:left-delimiter=[[ right-delimiter=]]
 [[ . ]]
 -- home/user/.local/share/chezmoi/template --
+-- home/user/dir/.keep --
 -- home/user/file1.txt --
 -- home/user/file2.txt --

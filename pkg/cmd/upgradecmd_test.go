@@ -1,14 +1,12 @@
 //go:build !noupgrade && !windows
-// +build !noupgrade,!windows
 
 package cmd
 
 import (
 	"testing"
 
+	"github.com/alecthomas/assert/v2"
 	"github.com/coreos/go-semver/semver"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/twpayne/go-vfs/v4"
 )
 
@@ -78,7 +76,7 @@ func TestConfigGetPackageFilename(t *testing.T) {
 			c := newTestConfig(t, vfs.EmptyFS{})
 			version := semver.Must(semver.NewVersion("2.0.0"))
 			actual, err := c.getPackageFilename(tc.packageType, version, "linux", tc.arch)
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, tc.expected, actual)
 		})
 	}

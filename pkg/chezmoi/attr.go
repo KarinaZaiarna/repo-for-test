@@ -7,6 +7,21 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// A SourceDirTargetType is the type of a target represented by a directory in
+// the source state.
+type SourceDirTargetType int
+
+// Source dir types.
+const (
+	SourceDirTypeDir SourceDirTargetType = iota
+	SourceDirTypeRemove
+)
+
+var sourceDirTypeStrs = map[SourceDirTargetType]string{
+	SourceDirTypeDir:    "dir",
+	SourceDirTypeRemove: "remove",
+}
+
 // A SourceFileTargetType is a the type of a target represented by a file in the
 // source state. A file in the source state can represent a file, script, or
 // symlink in the target state.
@@ -55,10 +70,11 @@ const (
 // DirAttr holds attributes parsed from a source directory name.
 type DirAttr struct {
 	TargetName string
+	Type       SourceDirTargetType
 	Exact      bool
+	External   bool
 	Private    bool
 	ReadOnly   bool
-	Remove     bool
 }
 
 // A FileAttr holds attributes parsed from a source file name.
@@ -78,70 +94,73 @@ type FileAttr struct {
 // parseDirAttr parses a single directory name in the source state.
 func parseDirAttr(sourceName string) DirAttr {
 	var (
-		name     = sourceName
-		exact    = false
-		private  = false
-		readOnly = false
-		remove   = false
+		sourceDirType = SourceDirTypeDir
+		name          = sourceName
+		external      = false
+		exact         = false
+		private       = false
+		readOnly      = false
 	)
-	if strings.HasPrefix(name, removePrefix) {
-		name = mustTrimPrefix(name, removePrefix)
-		remove = true
-	}
-	if strings.HasPrefix(name, exactPrefix) {
-		name = mustTrimPrefix(name, exactPrefix)
-		exact = true
-	}
-	if strings.HasPrefix(name, privatePrefix) {
-		name = mustTrimPrefix(name, privatePrefix)
-		private = true
-	}
-	if strings.HasPrefix(name, readOnlyPrefix) {
-		name = mustTrimPrefix(name, readOnlyPrefix)
-		readOnly = true
+	switch {
+	case strings.HasPrefix(name, removePrefix):
+		sourceDirType = SourceDirTypeRemove
+		name = name[len(removePrefix):]
+	default:
+		name, external = CutPrefix(name, externalPrefix)
+		name, exact = CutPrefix(name, exactPrefix)
+		name, private = CutPrefix(name, privatePrefix)
+		name, readOnly = CutPrefix(name, readOnlyPrefix)
 	}
 	switch {
 	case strings.HasPrefix(name, dotPrefix):
-		name = "." + mustTrimPrefix(name, dotPrefix)
+		name = "." + name[len(dotPrefix):]
 	case strings.HasPrefix(name, literalPrefix):
 		name = name[len(literalPrefix):]
 	}
 	return DirAttr{
 		TargetName: name,
+		Type:       sourceDirType,
 		Exact:      exact,
+		External:   external,
 		Private:    private,
 		ReadOnly:   readOnly,
-		Remove:     remove,
 	}
 }
 
 // MarshalZerologObject implements
 // github.com/rs/zerolog.ObjectMarshaler.MarshalZerologObject.
 func (da DirAttr) MarshalZerologObject(e *zerolog.Event) {
-	e.Str("targetName", da.TargetName)
-	e.Bool("exact", da.Exact)
-	e.Bool("private", da.Private)
-	e.Bool("readOnly", da.ReadOnly)
+	e.Str("TargetName", da.TargetName)
+	e.Str("Type", sourceDirTypeStrs[da.Type])
+	e.Bool("Exact", da.Exact)
+	e.Bool("External", da.External)
+	e.Bool("Private", da.Private)
+	e.Bool("ReadOnly", da.ReadOnly)
 }
 
 // SourceName returns da's source name.
 func (da DirAttr) SourceName() string {
 	sourceName := ""
-	if da.Remove {
+	switch da.Type {
+	case SourceDirTypeDir:
+		if da.External {
+			sourceName += externalPrefix
+		}
+		if da.Exact {
+			sourceName += exactPrefix
+		}
+		if da.Private {
+			sourceName += privatePrefix
+		}
+		if da.ReadOnly {
+			sourceName += readOnlyPrefix
+		}
+	case SourceDirTypeRemove:
 		sourceName += removePrefix
-	}
-	if da.Exact {
-		sourceName += exactPrefix
-	}
-	if da.Private {
-		sourceName += privatePrefix
-	}
-	if da.ReadOnly {
-		sourceName += readOnlyPrefix
 	}
 	switch {
 	case strings.HasPrefix(da.TargetName, "."):
-		sourceName += dotPrefix + mustTrimPrefix(da.TargetName, ".")
+		sourceName += dotPrefix + da.TargetName[len("."):]
 	case dirPrefixRx.MatchString(da.TargetName):
 		sourceName += literalPrefix + da.TargetName
 	default:
@@ -179,109 +198,69 @@ func parseFileAttr(sourceName, encryptedSuffix string) FileAttr {
 	switch {
 	case strings.HasPrefix(name, createPrefix):
 		sourceFileType = SourceFileTypeCreate
-		name = mustTrimPrefix(name, createPrefix)
-		if strings.HasPrefix(name, encryptedPrefix) {
-			name = mustTrimPrefix(name, encryptedPrefix)
-			encrypted = true
-		}
-		if strings.HasPrefix(name, privatePrefix) {
-			name = mustTrimPrefix(name, privatePrefix)
-			private = true
-		}
-		if strings.HasPrefix(name, readOnlyPrefix) {
-			name = mustTrimPrefix(name, readOnlyPrefix)
-			readOnly = true
-		}
-		if strings.HasPrefix(name, executablePrefix) {
-			name = mustTrimPrefix(name, executablePrefix)
-			executable = true
-		}
+		name = name[len(createPrefix):]
+		name, encrypted = CutPrefix(name, encryptedPrefix)
+		name, private = CutPrefix(name, privatePrefix)
+		name, readOnly = CutPrefix(name, readOnlyPrefix)
+		name, empty = CutPrefix(name, emptyPrefix)
+		name, executable = CutPrefix(name, executablePrefix)
 	case strings.HasPrefix(name, removePrefix):
 		sourceFileType = SourceFileTypeRemove
-		name = mustTrimPrefix(name, removePrefix)
+		name = name[len(removePrefix):]
 	case strings.HasPrefix(name, runPrefix):
 		sourceFileType = SourceFileTypeScript
-		name = mustTrimPrefix(name, runPrefix)
+		name = name[len(runPrefix):]
 		switch {
 		case strings.HasPrefix(name, oncePrefix):
-			name = mustTrimPrefix(name, oncePrefix)
+			name = name[len(oncePrefix):]
 			condition = ScriptConditionOnce
 		case strings.HasPrefix(name, onChangePrefix):
-			name = mustTrimPrefix(name, onChangePrefix)
+			name = name[len(onChangePrefix):]
 			condition = ScriptConditionOnChange
 		default:
 			condition = ScriptConditionAlways
 		}
 		switch {
 		case strings.HasPrefix(name, beforePrefix):
-			name = mustTrimPrefix(name, beforePrefix)
+			name = name[len(beforePrefix):]
 			order = ScriptOrderBefore
 		case strings.HasPrefix(name, afterPrefix):
-			name = mustTrimPrefix(name, afterPrefix)
+			name = name[len(afterPrefix):]
 			order = ScriptOrderAfter
 		}
 	case strings.HasPrefix(name, symlinkPrefix):
 		sourceFileType = SourceFileTypeSymlink
-		name = mustTrimPrefix(name, symlinkPrefix)
+		name = name[len(symlinkPrefix):]
 	case strings.HasPrefix(name, modifyPrefix):
 		sourceFileType = SourceFileTypeModify
-		name = mustTrimPrefix(name, modifyPrefix)
-		if strings.HasPrefix(name, encryptedPrefix) {
-			name = mustTrimPrefix(name, encryptedPrefix)
-			encrypted = true
-		}
-		if strings.HasPrefix(name, privatePrefix) {
-			name = mustTrimPrefix(name, privatePrefix)
-			private = true
-		}
-		if strings.HasPrefix(name, readOnlyPrefix) {
-			name = mustTrimPrefix(name, readOnlyPrefix)
-			readOnly = true
-		}
-		if strings.HasPrefix(name, executablePrefix) {
-			name = mustTrimPrefix(name, executablePrefix)
-			executable = true
-		}
+		name = name[len(modifyPrefix):]
+		name, encrypted = CutPrefix(name, encryptedPrefix)
+		name, private = CutPrefix(name, privatePrefix)
+		name, readOnly = CutPrefix(name, readOnlyPrefix)
+		name, executable = CutPrefix(name, executablePrefix)
 	default:
-		if strings.HasPrefix(name, encryptedPrefix) {
-			name = mustTrimPrefix(name, encryptedPrefix)
-			encrypted = true
-		}
-		if strings.HasPrefix(name, privatePrefix) {
-			name = mustTrimPrefix(name, privatePrefix)
-			private = true
-		}
-		if strings.HasPrefix(name, readOnlyPrefix) {
-			name = mustTrimPrefix(name, readOnlyPrefix)
-			readOnly = true
-		}
-		if strings.HasPrefix(name, emptyPrefix) {
-			name = mustTrimPrefix(name, emptyPrefix)
-			empty = true
-		}
-		if strings.HasPrefix(name, executablePrefix) {
-			name = mustTrimPrefix(name, executablePrefix)
-			executable = true
-		}
+		name, encrypted = CutPrefix(name, encryptedPrefix)
+		name, private = CutPrefix(name, privatePrefix)
+		name, readOnly = CutPrefix(name, readOnlyPrefix)
+		name, empty = CutPrefix(name, emptyPrefix)
+		name, executable = CutPrefix(name, executablePrefix)
 	}
 	switch {
 	case strings.HasPrefix(name, dotPrefix):
-		name = "." + mustTrimPrefix(name, dotPrefix)
+		name = "." + name[len(dotPrefix):]
 	case strings.HasPrefix(name, literalPrefix):
 		name = name[len(literalPrefix):]
 	}
 	if encrypted {
-		name = strings.TrimSuffix(name, encryptedSuffix)
+		name, _ = CutSuffix(name, encryptedSuffix)
 	}
 	switch {
 	case strings.HasSuffix(name, literalSuffix):
-		name = mustTrimSuffix(name, literalSuffix)
+		name = name[:len(name)-len(literalSuffix)]
 	case strings.HasSuffix(name, TemplateSuffix):
-		name = mustTrimSuffix(name, TemplateSuffix)
+		name = name[:len(name)-len(TemplateSuffix)]
 		template = true
-		if strings.HasSuffix(name, literalSuffix) {
-			name = mustTrimSuffix(name, literalSuffix)
-		}
+		name, _ = CutSuffix(name, literalSuffix)
 	}
 	return FileAttr{
 		TargetName: name,
@@ -326,6 +305,9 @@ func (fa FileAttr) SourceName(encryptedSuffix string) string {
 		}
 		if fa.ReadOnly {
 			sourceName += readOnlyPrefix
+		}
+		if fa.Empty {
+			sourceName += emptyPrefix
 		}
 		if fa.Executable {
 			sourceName += executablePrefix
@@ -381,7 +363,7 @@ func (fa FileAttr) SourceName(encryptedSuffix string) string {
 	}
 	switch {
 	case strings.HasPrefix(fa.TargetName, "."):
-		sourceName += dotPrefix + mustTrimPrefix(fa.TargetName, ".")
+		sourceName += dotPrefix + fa.TargetName[len("."):]
 	case filePrefixRx.MatchString(fa.TargetName):
 		sourceName += literalPrefix + fa.TargetName
 	default:

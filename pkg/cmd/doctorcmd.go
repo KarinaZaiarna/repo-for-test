@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/coreos/go-semver/semver"
-	"github.com/google/go-github/v48/github"
+	"github.com/google/go-github/v52/github"
 	"github.com/spf13/cobra"
 	"github.com/twpayne/go-xdg/v6"
 
@@ -152,8 +152,8 @@ func (c *Config) newDoctorCmd() *cobra.Command {
 		Long:    mustLongHelp("doctor"),
 		RunE:    c.runDoctorCmd,
 		Annotations: newAnnotations(
-			doesNotRequireValidConfig,
 			runsCommands,
+			runsWithInvalidConfig,
 		),
 	}
 
@@ -303,6 +303,14 @@ func (c *Config) runDoctorCmd(cmd *cobra.Command, args []string) error {
 			versionRx:   regexp.MustCompile(`^(\d+\.\d+\.\d+)`),
 		},
 		&binaryCheck{
+			name:        "dashlane-command",
+			binaryname:  c.Dashlane.Command,
+			ifNotSet:    checkResultWarning,
+			ifNotExist:  checkResultInfo,
+			versionArgs: []string{"--version"},
+			versionRx:   regexp.MustCompile(`^(\d+\.\d+\.\d+)`),
+		},
+		&binaryCheck{
 			name:        "gopass-command",
 			binaryname:  c.Gopass.Command,
 			ifNotSet:    checkResultWarning,
@@ -358,6 +366,15 @@ func (c *Config) runDoctorCmd(cmd *cobra.Command, args []string) error {
 			versionArgs: []string{"--version"},
 			versionRx:   regexp.MustCompile(`^(\d+\.\d+\.\d+)`),
 			minVersion:  &passholeMinVersion,
+		},
+		&binaryCheck{
+			name:        "rbw-command",
+			binaryname:  c.RBW.Command,
+			ifNotSet:    checkResultWarning,
+			ifNotExist:  checkResultInfo,
+			versionArgs: []string{"--version"},
+			versionRx:   regexp.MustCompile(`^rbw\s+(\d+\.\d+\.\d+)`),
+			minVersion:  &rbwMinVersion,
 		},
 		&binaryCheck{
 			name:        "vault-command",
@@ -484,13 +501,15 @@ func (c *configFileCheck) Run(system chezmoi.System, homeDirAbsPath chezmoi.AbsP
 	case 0:
 		return checkResultOK, "no config file found"
 	case 1:
-		var filenameAbsPath chezmoi.AbsPath
-		for filenameAbsPath = range filenameAbsPaths {
-		}
+		filenameAbsPath := anyKey(filenameAbsPaths)
 		if filenameAbsPath != c.expected {
 			return checkResultFailed, fmt.Sprintf("found %s, expected %s", filenameAbsPath, c.expected)
 		}
-		if _, err := system.ReadFile(filenameAbsPath); err != nil {
+		config, err := newConfig()
+		if err != nil {
+			return checkResultError, err.Error()
+		}
+		if err := config.decodeConfigFile(filenameAbsPath, &config.ConfigFile); err != nil {
 			return checkResultError, fmt.Sprintf("%s: %v", filenameAbsPath, err)
 		}
 		fileInfo, err := system.Stat(filenameAbsPath)
@@ -722,4 +741,14 @@ func (c *versionCheck) Run(system chezmoi.System, homeDirAbsPath chezmoi.AbsPath
 		return checkResultWarning, c.versionStr
 	}
 	return checkResultOK, c.versionStr
+}
+
+// anyKey returns any key from m. It is typically used to return a single key
+// when m is known to contain exactly one element.
+func anyKey[M ~map[K]V, K comparable, V any](m M) K { //nolint:ireturn
+	for k := range m {
+		return k
+	}
+	var k K
+	return k
 }

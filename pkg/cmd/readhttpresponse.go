@@ -114,7 +114,7 @@ func (m httpSpinnerModel) View() string {
 
 func (c *Config) readHTTPResponse(resp *http.Response) ([]byte, error) {
 	switch {
-	case c.noTTY || !c.Progress:
+	case c.noTTY || !c.Progress.Value(c.progressAutoFunc):
 		return io.ReadAll(resp.Body)
 
 	case resp.ContentLength >= 0:
@@ -181,7 +181,7 @@ func runReadHTTPResponse(model cancelableModel, resp *http.Response) ([]byte, er
 		})
 	}()
 
-	if model, err := program.StartReturningModel(); err != nil {
+	if model, err := program.Run(); err != nil {
 		return nil, err
 	} else if model.(cancelableModel).Canceled() { //nolint:forcetypeassert
 		return nil, chezmoi.ExitCodeError(0)

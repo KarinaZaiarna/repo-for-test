@@ -61,8 +61,23 @@ const (
 	logComponentValueSystem          = "system"
 )
 
-type purgeOptions struct {
-	binary bool
+type doPurgeOptions struct {
+	binary          bool
+	cache           bool
+	config          bool
+	persistentState bool
+	sourceDir       bool
+	workingTree     bool
+}
+
+type commandConfig struct {
+	Command string   `json:"command" mapstructure:"command" yaml:"command"`
+	Args    []string `json:"args" mapstructure:"args" yaml:"args"`
+}
+
+type hookConfig struct {
+	Pre  commandConfig `json:"pre" mapstructure:"pre" yaml:"pre"`
+	Post commandConfig `json:"post" mapstructure:"post" yaml:"post"`
 }
 
 type templateConfig struct {
@@ -81,11 +96,13 @@ type ConfigFile struct {
 	Data               map[string]any                  `json:"data" mapstructure:"data" yaml:"data"`
 	Format             writeDataFormat                 `json:"format" mapstructure:"format" yaml:"format"`
 	DestDirAbsPath     chezmoi.AbsPath                 `json:"destDir" mapstructure:"destDir" yaml:"destDir"`
+	GitHub             gitHubConfig                    `json:"gitHub" mapstructure:"gitHub" yaml:"gitHub"`
+	Hooks              map[string]hookConfig           `json:"hooks" mapstructure:"hooks" yaml:"hooks"`
 	Interpreters       map[string]*chezmoi.Interpreter `json:"interpreters" mapstructure:"interpreters" yaml:"interpreters"` //nolint:lll
 	Mode               chezmoi.Mode                    `json:"mode" mapstructure:"mode" yaml:"mode"`
 	Pager              string                          `json:"pager" mapstructure:"pager" yaml:"pager"`
 	PINEntry           pinEntryConfig                  `json:"pinentry" mapstructure:"pinentry" yaml:"pinentry"`
-	Progress           bool                            `json:"progress" mapstructure:"progress" yaml:"progress"`
+	Progress           autoBool                        `json:"progress" mapstructure:"progress" yaml:"progress"`
 	Safe               bool                            `json:"safe" mapstructure:"safe" yaml:"safe"`
 	ScriptEnv          map[string]string               `json:"scriptEnv" mapstructure:"scriptEnv" yaml:"scriptEnv"`
 	ScriptTempDir      chezmoi.AbsPath                 `json:"scriptTempDir" mapstructure:"scriptTempDir" yaml:"scriptTempDir"` //nolint:lll
@@ -102,6 +119,8 @@ type ConfigFile struct {
 	// Password manager configurations.
 	AWSSecretsManager awsSecretsManagerConfig `json:"awsSecretsManager" mapstructure:"awsSecretsManager" yaml:"awsSecretsManager"` //nolint:lll
 	Bitwarden         bitwardenConfig         `json:"bitwarden" mapstructure:"bitwarden" yaml:"bitwarden"`
+	Dashlane          dashlaneConfig          `json:"dashlane" mapstructure:"dashlane" yaml:"dashlane"`
+	Ejson             ejsonConfig             `json:"ejson" mapstructure:"ejson" yaml:"ejson"`
 	Gopass            gopassConfig            `json:"gopass" mapstructure:"gopass" yaml:"gopass"`
 	Keepassxc         keepassxcConfig         `json:"keepassxc" mapstructure:"keepassxc" yaml:"keepassxc"`
 	Keeper            keeperConfig            `json:"keeper" mapstructure:"keeper" yaml:"keeper"`
@@ -109,6 +128,7 @@ type ConfigFile struct {
 	Onepassword       onepasswordConfig       `json:"onepassword" mapstructure:"onepassword" yaml:"onepassword"`
 	Pass              passConfig              `json:"pass" mapstructure:"pass" yaml:"pass"`
 	Passhole          passholeConfig          `json:"passhole" mapstructure:"passhole" yaml:"passhole"`
+	RBW               rbwConfig               `json:"rbw" mapstructure:"rbw" yaml:"rbw"`
 	Secret            secretConfig            `json:"secret" mapstructure:"secret" yaml:"secret"`
 	Vault             vaultConfig             `json:"vault" mapstructure:"vault" yaml:"vault"`
 
@@ -157,6 +177,7 @@ type Config struct {
 	// Command configurations, not settable in the config file.
 	apply           applyCmdConfig
 	archive         archiveCmdConfig
+	chattr          chattrCmdConfig
 	dump            dumpCmdConfig
 	executeTemplate executeTemplateCmdConfig
 	_import         importCmdConfig
@@ -168,6 +189,7 @@ type Config struct {
 	remove          removeCmdConfig
 	secret          secretCmdConfig
 	state           stateCmdConfig
+	unmanaged       unmanagedCmdConfig
 	upgrade         upgradeCmdConfig
 
 	// Version information.
@@ -196,6 +218,7 @@ type Config struct {
 	sourceState         *chezmoi.SourceState
 	sourceStateErr      error
 	templateData        *templateData
+	runEnv              []string
 
 	stdin       io.Reader
 	stdout      io.Writer
@@ -210,25 +233,27 @@ type Config struct {
 }
 
 type templateData struct {
-	Arch           string          `json:"arch"`
-	Args           []string        `json:"args"`
-	CacheDir       chezmoi.AbsPath `json:"cacheDir"`
-	ConfigFile     chezmoi.AbsPath `json:"configFile"`
-	Executable     chezmoi.AbsPath `json:"executable"`
-	FQDNHostname   string          `json:"fqdnHostname"`
-	GID            string          `json:"gid"`
-	Group          string          `json:"group"`
-	HomeDir        chezmoi.AbsPath `json:"homeDir"`
-	Hostname       string          `json:"hostname"`
-	Kernel         map[string]any  `json:"kernel"`
-	OS             string          `json:"os"`
-	OSRelease      map[string]any  `json:"osRelease"`
-	SourceDir      chezmoi.AbsPath `json:"sourceDir"`
-	UID            string          `json:"uid"`
-	Username       string          `json:"username"`
-	Version        map[string]any  `json:"version"`
-	WindowsVersion map[string]any  `json:"windowsVersion"`
-	WorkingTree    chezmoi.AbsPath `json:"workingTree"`
+	arch           string
+	args           []string
+	cacheDir       chezmoi.AbsPath
+	command        string
+	config         map[string]any
+	configFile     chezmoi.AbsPath
+	executable     chezmoi.AbsPath
+	fqdnHostname   string
+	gid            string
+	group          string
+	homeDir        chezmoi.AbsPath
+	hostname       string
+	kernel         map[string]any
+	os             string
+	osRelease      map[string]any
+	sourceDir      chezmoi.AbsPath
+	uid            string
+	username       string
+	version        map[string]any
+	windowsVersion map[string]any
+	workingTree    chezmoi.AbsPath
 }
 
 // A configOption sets and option on a Config.
@@ -307,13 +332,17 @@ func newConfig(options ...configOption) (*Config, error) {
 			recurseSubmodules: true,
 		},
 		managed: managedCmdConfig{
-			filter: chezmoi.NewEntryTypeFilter(chezmoi.EntryTypesAll, chezmoi.EntryTypesNone),
+			filter:    chezmoi.NewEntryTypeFilter(chezmoi.EntryTypesAll, chezmoi.EntryTypesNone),
+			pathStyle: pathStyleRelative,
 		},
 		mergeAll: mergeAllCmdConfig{
 			recursive: true,
 		},
 		reAdd: reAddCmdConfig{
 			filter: chezmoi.NewEntryTypeFilter(chezmoi.EntryTypesAll, chezmoi.EntryTypesNone),
+		},
+		unmanaged: unmanagedCmdConfig{
+			pathStyle: pathStyleRelative,
 		},
 		upgrade: upgradeCmdConfig{
 			owner: gitHubOwner,
@@ -334,19 +363,30 @@ func newConfig(options ...configOption) (*Config, error) {
 		stderr: os.Stderr,
 	}
 
+	// Override sprig's toPrettyJson template function. Delete it from the
+	// template function map first to avoid a duplication function panic.
+	delete(c.templateFuncs, "toPrettyJson")
+
+	// The completion template function is added in persistentPreRunRootE as
+	// it needs a *cobra.Command, which we don't yet have.
 	for key, value := range map[string]any{
-		"awsSecretsManager":    c.awsSecretsManagerTemplateFunc,
-		"awsSecretsManagerRaw": c.awsSecretsManagerRawTemplateFunc,
-		"bitwarden":            c.bitwardenTemplateFunc,
-		"bitwardenAttachment":  c.bitwardenAttachmentTemplateFunc,
-		"bitwardenFields":      c.bitwardenFieldsTemplateFunc,
-		"comment":              c.commentTemplateFunc,
-		// The completion template function is added in persistentPreRunRootE as
-		// it needs a *cobra.Command, which we don't yet have.
+		"awsSecretsManager":        c.awsSecretsManagerTemplateFunc,
+		"awsSecretsManagerRaw":     c.awsSecretsManagerRawTemplateFunc,
+		"bitwarden":                c.bitwardenTemplateFunc,
+		"bitwardenAttachment":      c.bitwardenAttachmentTemplateFunc,
+		"bitwardenAttachmentByRef": c.bitwardenAttachmentByRefTemplateFunc,
+		"bitwardenFields":          c.bitwardenFieldsTemplateFunc,
+		"comment":                  c.commentTemplateFunc,
+		"dashlaneNote":             c.dashlaneNoteTemplateFunc,
+		"dashlanePassword":         c.dashlanePasswordTemplateFunc,
 		"decrypt":                  c.decryptTemplateFunc,
+		"deleteValueAtPath":        c.deleteValueAtPathTemplateFunc,
+		"ejsonDecrypt":             c.ejsonDecryptTemplateFunc,
+		"ejsonDecryptWithKey":      c.ejsonDecryptWithKeyTemplateFunc,
 		"encrypt":                  c.encryptTemplateFunc,
 		"eqFold":                   c.eqFoldTemplateFunc,
 		"fromIni":                  c.fromIniTemplateFunc,
+		"fromJsonc":                c.fromJsoncTemplateFunc,
 		"fromToml":                 c.fromTomlTemplateFunc,
 		"fromYaml":                 c.fromYamlTemplateFunc,
 		"gitHubKeys":               c.gitHubKeysTemplateFunc,
@@ -355,10 +395,13 @@ func newConfig(options ...configOption) (*Config, error) {
 		"glob":                     c.globTemplateFunc,
 		"gopass":                   c.gopassTemplateFunc,
 		"gopassRaw":                c.gopassRawTemplateFunc,
+		"hexDecode":                c.hexDecodeTemplateFunc,
+		"hexEncode":                c.hexEncodeTemplateFunc,
 		"include":                  c.includeTemplateFunc,
 		"includeTemplate":          c.includeTemplateTemplateFunc,
 		"ioreg":                    c.ioregTemplateFunc,
 		"joinPath":                 c.joinPathTemplateFunc,
+		"jq":                       c.jqTemplateFunc,
 		"keepassxc":                c.keepassxcTemplateFunc,
 		"keepassxcAttachment":      c.keepassxcAttachmentTemplateFunc,
 		"keepassxcAttribute":       c.keepassxcAttributeTemplateFunc,
@@ -369,6 +412,7 @@ func newConfig(options ...configOption) (*Config, error) {
 		"lastpass":                 c.lastpassTemplateFunc,
 		"lastpassRaw":              c.lastpassRawTemplateFunc,
 		"lookPath":                 c.lookPathTemplateFunc,
+		"lstat":                    c.lstatTemplateFunc,
 		"mozillaInstallHash":       c.mozillaInstallHashTemplateFunc,
 		"onepassword":              c.onepasswordTemplateFunc,
 		"onepasswordDetailsFields": c.onepasswordDetailsFieldsTemplateFunc,
@@ -380,13 +424,17 @@ func newConfig(options ...configOption) (*Config, error) {
 		"passFields":               c.passFieldsTemplateFunc,
 		"passRaw":                  c.passRawTemplateFunc,
 		"passhole":                 c.passholeTemplateFunc,
+		"pruneEmptyDicts":          c.pruneEmptyDictsTemplateFunc,
 		"quoteList":                c.quoteListTemplateFunc,
+		"rbw":                      c.rbwTemplateFunc,
+		"rbwFields":                c.rbwFieldsTemplateFunc,
 		"replaceAllRegex":          c.replaceAllRegexTemplateFunc,
 		"secret":                   c.secretTemplateFunc,
 		"secretJSON":               c.secretJSONTemplateFunc,
 		"setValueAtPath":           c.setValueAtPathTemplateFunc,
 		"stat":                     c.statTemplateFunc,
 		"toIni":                    c.toIniTemplateFunc,
+		"toPrettyJson":             c.toPrettyJsonTemplateFunc,
 		"toToml":                   c.toTomlTemplateFunc,
 		"toYaml":                   c.toYamlTemplateFunc,
 		"vault":                    c.vaultTemplateFunc,
@@ -440,6 +488,7 @@ func (c *Config) addTemplateFunc(key string, value any) {
 }
 
 type applyArgsOptions struct {
+	cmd          *cobra.Command
 	filter       *chezmoi.EntryTypeFilter
 	init         bool
 	recursive    bool
@@ -456,7 +505,7 @@ func (c *Config) applyArgs(
 	options applyArgsOptions,
 ) error {
 	if options.init {
-		if err := c.createAndReloadConfigFile(); err != nil {
+		if err := c.createAndReloadConfigFile(options.cmd); err != nil {
 			return err
 		}
 	}
@@ -504,7 +553,7 @@ func (c *Config) applyArgs(
 		}
 	}
 
-	sourceState, err := c.getSourceState(ctx)
+	sourceState, err := c.getSourceState(ctx, options.cmd)
 	if err != nil {
 		return err
 	}
@@ -520,8 +569,8 @@ func (c *Config) applyArgs(
 		}
 	default:
 		targetRelPaths, err = c.targetRelPaths(sourceState, args, targetRelPathsOptions{
-			mustBeInSourceState: true,
-			recursive:           options.recursive,
+			mustBeManaged: true,
+			recursive:     options.recursive,
 		})
 		if err != nil {
 			return err
@@ -615,7 +664,20 @@ func (c *Config) colorAutoFunc() bool {
 
 // createAndReloadConfigFile creates a config file if it there is a config file
 // template and reloads it.
-func (c *Config) createAndReloadConfigFile() error {
+func (c *Config) createAndReloadConfigFile(cmd *cobra.Command) error {
+	// Refresh the source directory, as there might be a .chezmoiroot file and
+	// the template data is set before .chezmoiroot is read.
+	sourceDirAbsPath, err := c.getSourceDirAbsPath(&getSourceDirAbsPathOptions{
+		refresh: true,
+	})
+	if err != nil {
+		return err
+	}
+	c.templateData.sourceDir = sourceDirAbsPath
+	c.runEnv = append(c.runEnv, "CHEZMOI_SOURCE_DIR="+sourceDirAbsPath.String())
+	realSystem := c.baseSystem.(*chezmoi.RealSystem) //nolint:forcetypeassert
+	realSystem.SetScriptEnv(c.runEnv)
+
 	// Find config template, execute it, and create config file.
 	configTemplate, err := c.findConfigTemplate()
 	if err != nil {
@@ -623,18 +685,15 @@ func (c *Config) createAndReloadConfigFile() error {
 	}
 
 	if configTemplate == nil {
-		if err := c.persistentState.Delete(chezmoi.ConfigStateBucket, configStateKey); err != nil {
-			return err
-		}
-		return nil
+		return c.persistentState.Delete(chezmoi.ConfigStateBucket, configStateKey)
 	}
 
-	configFileContents, err := c.createConfigFile(configTemplate.targetRelPath, configTemplate.contents)
+	configFileContents, err := c.createConfigFile(configTemplate.targetRelPath, configTemplate.contents, cmd)
 	if err != nil {
 		return err
 	}
 
-	// Validate the configMap.
+	// Validate the config file.
 	var configFile ConfigFile
 	if err := c.decodeConfigBytes(configTemplate.format, configFileContents, &configFile); err != nil {
 		return fmt.Errorf("%s: %w", configTemplate.sourceAbsPath, err)
@@ -666,16 +725,12 @@ func (c *Config) createAndReloadConfigFile() error {
 	if err := c.decodeConfigBytes(configTemplate.format, configFileContents, &c.ConfigFile); err != nil {
 		return fmt.Errorf("%s: %w", configTemplate.sourceAbsPath, err)
 	}
-	if err := c.setEncryption(); err != nil {
-		return err
-	}
-
-	return nil
+	return c.setEncryption()
 }
 
 // createConfigFile creates a config file using a template and returns its
 // contents.
-func (c *Config) createConfigFile(filename chezmoi.RelPath, data []byte) ([]byte, error) {
+func (c *Config) createConfigFile(filename chezmoi.RelPath, data []byte, cmd *cobra.Command) ([]byte, error) {
 	funcMap := make(template.FuncMap)
 	chezmoi.RecursiveMerge(funcMap, c.templateFuncs)
 	initTemplateFuncs := map[string]any{
@@ -698,7 +753,7 @@ func (c *Config) createConfigFile(filename chezmoi.RelPath, data []byte) ([]byte
 		return nil, err
 	}
 
-	templateData := c.getTemplateDataMap()
+	templateData := c.getTemplateDataMap(cmd)
 	if c.init.data {
 		chezmoi.RecursiveMerge(templateData, c.Data)
 	}
@@ -810,10 +865,7 @@ func (c *Config) decodeConfigMap(configMap map[string]any, configFile *ConfigFil
 	if err != nil {
 		return err
 	}
-	if err := decoder.Decode(configMap); err != nil {
-		return err
-	}
-	return nil
+	return decoder.Decode(configMap)
 }
 
 // defaultPreApplyFunc is the default pre-apply function. If the target entry
@@ -1215,47 +1267,49 @@ func (c *Config) getSourceDirAbsPath(options *getSourceDirAbsPathOptions) (chezm
 	return c.sourceDirAbsPath, c.sourceDirAbsPathErr
 }
 
-func (c *Config) getSourceState(ctx context.Context) (*chezmoi.SourceState, error) {
+func (c *Config) getSourceState(ctx context.Context, cmd *cobra.Command) (*chezmoi.SourceState, error) {
 	if c.sourceState != nil || c.sourceStateErr != nil {
 		return c.sourceState, c.sourceStateErr
 	}
-	c.sourceState, c.sourceStateErr = c.newSourceState(ctx)
+	c.sourceState, c.sourceStateErr = c.newSourceState(ctx, cmd)
 	return c.sourceState, c.sourceStateErr
 }
 
 // getTemplateData returns the default template data.
-func (c *Config) getTemplateData() *templateData {
+func (c *Config) getTemplateData(cmd *cobra.Command) *templateData {
 	if c.templateData == nil {
-		c.templateData = c.newTemplateData()
+		c.templateData = c.newTemplateData(cmd)
 	}
 	return c.templateData
 }
 
-// getTemplateDataMao returns the template data as a map.
-func (c *Config) getTemplateDataMap() map[string]any {
-	templateData := c.getTemplateData()
+// getTemplateDataMap returns the template data as a map.
+func (c *Config) getTemplateDataMap(cmd *cobra.Command) map[string]any {
+	templateData := c.getTemplateData(cmd)
 
 	return map[string]any{
 		"chezmoi": map[string]any{
-			"arch":           templateData.Arch,
-			"args":           templateData.Args,
-			"cacheDir":       templateData.CacheDir.String(),
-			"configFile":     templateData.ConfigFile.String(),
-			"executable":     templateData.Executable.String(),
-			"fqdnHostname":   templateData.FQDNHostname,
-			"gid":            templateData.GID,
-			"group":          templateData.Group,
-			"homeDir":        templateData.HomeDir.String(),
-			"hostname":       templateData.Hostname,
-			"kernel":         templateData.Kernel,
-			"os":             templateData.OS,
-			"osRelease":      templateData.OSRelease,
-			"sourceDir":      templateData.SourceDir.String(),
-			"uid":            templateData.UID,
-			"username":       templateData.Username,
-			"version":        templateData.Version,
-			"windowsVersion": templateData.WindowsVersion,
-			"workingTree":    templateData.WorkingTree.String(),
+			"arch":           templateData.arch,
+			"args":           templateData.args,
+			"cacheDir":       templateData.cacheDir.String(),
+			"command":        templateData.command,
+			"config":         templateData.config,
+			"configFile":     templateData.configFile.String(),
+			"executable":     templateData.executable.String(),
+			"fqdnHostname":   templateData.fqdnHostname,
+			"gid":            templateData.gid,
+			"group":          templateData.group,
+			"homeDir":        templateData.homeDir.String(),
+			"hostname":       templateData.hostname,
+			"kernel":         templateData.kernel,
+			"os":             templateData.os,
+			"osRelease":      templateData.osRelease,
+			"sourceDir":      templateData.sourceDir.String(),
+			"uid":            templateData.uid,
+			"username":       templateData.username,
+			"version":        templateData.version,
+			"windowsVersion": templateData.windowsVersion,
+			"workingTree":    templateData.workingTree.String(),
 		},
 	}
 }
@@ -1314,7 +1368,7 @@ func (c *Config) makeRunEWithSourceState(
 	runE func(*cobra.Command, []string, *chezmoi.SourceState) error,
 ) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
-		sourceState, err := c.getSourceState(cmd.Context())
+		sourceState, err := c.getSourceState(cmd.Context(), cmd)
 		if err != nil {
 			return err
 		}
@@ -1350,7 +1404,7 @@ func (c *Config) newRootCmd() (*cobra.Command, error) {
 	persistentFlags.VarP(&c.DestDirAbsPath, "destination", "D", "Set destination directory")
 	persistentFlags.Var(&c.Mode, "mode", "Mode")
 	persistentFlags.Var(&c.persistentStateAbsPath, "persistent-state", "Set persistent state file")
-	persistentFlags.BoolVar(&c.Progress, "progress", c.Progress, "Display progress bars")
+	persistentFlags.Var(&c.Progress, "progress", "Display progress bars")
 	persistentFlags.BoolVar(&c.Safe, "safe", c.Safe, "Safely replace files and symlinks")
 	persistentFlags.VarP(&c.SourceDirAbsPath, "source", "S", "Set source directory")
 	persistentFlags.Var(&c.UseBuiltinAge, "use-builtin-age", "Use builtin age")
@@ -1367,7 +1421,7 @@ func (c *Config) newRootCmd() (*cobra.Command, error) {
 	persistentFlags.BoolVar(&c.interactive, "interactive", c.interactive, "Prompt for all changes")
 	persistentFlags.BoolVarP(&c.keepGoing, "keep-going", "k", c.keepGoing, "Keep going as far as possible after an error")
 	persistentFlags.BoolVar(&c.noPager, "no-pager", c.noPager, "Do not use the pager")
-	persistentFlags.BoolVar(&c.noTTY, "no-tty", c.noTTY, "Do not attempt to get a TTY for reading passwords")
+	persistentFlags.BoolVar(&c.noTTY, "no-tty", c.noTTY, "Do not attempt to get a TTY for prompts")
 	persistentFlags.VarP(&c.outputAbsPath, "output", "o", "Write output to path instead of stdout")
 	persistentFlags.VarP(&c.refreshExternals, "refresh-externals", "R", "Refresh external cache")
 	persistentFlags.Lookup("refresh-externals").NoOptDefVal = chezmoi.RefreshExternalsAlways.String()
@@ -1467,7 +1521,7 @@ func (c *Config) newDiffSystem(s chezmoi.System, w io.Writer, dirAbsPath chezmoi
 
 // newSourceState returns a new SourceState with options.
 func (c *Config) newSourceState(
-	ctx context.Context, options ...chezmoi.SourceStateOption,
+	ctx context.Context, cmd *cobra.Command, options ...chezmoi.SourceStateOption,
 ) (*chezmoi.SourceState, error) {
 	if err := c.checkVersion(); err != nil {
 		return nil, err
@@ -1488,7 +1542,9 @@ func (c *Config) newSourceState(
 	sourceState := chezmoi.NewSourceState(append([]chezmoi.SourceStateOption{
 		chezmoi.WithBaseSystem(c.baseSystem),
 		chezmoi.WithCacheDir(c.CacheDirAbsPath),
-		chezmoi.WithDefaultTemplateDataFunc(c.getTemplateDataMap),
+		chezmoi.WithDefaultTemplateDataFunc(func() map[string]any {
+			return c.getTemplateDataMap(cmd)
+		}),
 		chezmoi.WithDestDir(c.DestDirAbsPath),
 		chezmoi.WithEncryption(c.encryption),
 		chezmoi.WithHTTPClient(httpClient),
@@ -1496,10 +1552,12 @@ func (c *Config) newSourceState(
 		chezmoi.WithLogger(&sourceStateLogger),
 		chezmoi.WithMode(c.Mode),
 		chezmoi.WithPriorityTemplateData(c.Data),
+		chezmoi.WithScriptEnv(c.runEnv),
 		chezmoi.WithSourceDir(c.SourceDirAbsPath),
 		chezmoi.WithSystem(c.sourceSystem),
 		chezmoi.WithTemplateFuncs(c.templateFuncs),
 		chezmoi.WithTemplateOptions(c.Template.Options),
+		chezmoi.WithUmask(c.Umask),
 		chezmoi.WithVersion(c.version),
 	}, options...)...)
 
@@ -1532,7 +1590,7 @@ func (c *Config) persistentPostRunRootE(cmd *cobra.Command, args []string) error
 			var format chezmoi.Format
 			if format, err = chezmoi.FormatFromAbsPath(c.configFileAbsPath); err == nil {
 				var config map[string]any
-				if err = format.Unmarshal(configFileContents, &config); err != nil {
+				if err = format.Unmarshal(configFileContents, &config); err != nil { //nolint:revive
 					// err is already set, do nothing.
 				} else {
 					err = c.decodeConfigMap(config, &ConfigFile{})
@@ -1567,6 +1625,12 @@ func (c *Config) persistentPostRunRootE(cmd *cobra.Command, args []string) error
 
 	if c.restoreWindowsConsole != nil {
 		if err := c.restoreWindowsConsole(); err != nil {
+			return err
+		}
+	}
+
+	if command := c.Hooks[cmd.Name()].Post; command.Command != "" {
+		if err := c.run(c.homeDirAbsPath, command.Command, command.Args); err != nil {
 			return err
 		}
 	}
@@ -1649,7 +1713,7 @@ func (c *Config) persistentPreRunRootE(cmd *cobra.Command, args []string) error 
 	})
 
 	// Read the config file.
-	if annotations.hasTag(doesNotRequireValidConfig) {
+	if annotations.hasTag(runsWithInvalidConfig) {
 		if c.configFileAbsPathErr == nil {
 			_ = c.readConfig()
 		}
@@ -1802,7 +1866,7 @@ func (c *Config) persistentPreRunRootE(cmd *cobra.Command, args []string) error 
 			// Do nothing.
 		case err == nil:
 			return fmt.Errorf("%s: not a directory", c.SourceDirAbsPath)
-		case err != nil:
+		default:
 			return err
 		}
 	}
@@ -1828,7 +1892,7 @@ func (c *Config) persistentPreRunRootE(cmd *cobra.Command, args []string) error 
 	FOR:
 		for {
 			gitDirAbsPath := workingTreeAbsPath.JoinString(gogit.GitDirName)
-			if fileInfo, err := c.baseSystem.Stat(gitDirAbsPath); err == nil && fileInfo.IsDir() {
+			if _, err := c.baseSystem.Stat(gitDirAbsPath); err == nil {
 				c.WorkingTreeAbsPath = workingTreeAbsPath
 				break FOR
 			}
@@ -1852,31 +1916,36 @@ func (c *Config) persistentPreRunRootE(cmd *cobra.Command, args []string) error 
 	}
 
 	scriptEnv := os.Environ()
-	templateData := c.getTemplateData()
+	templateData := c.getTemplateData(cmd)
+	scriptEnv = append(scriptEnv, "CHEZMOI=1")
 	for key, value := range map[string]string{
-		"ARCH":          templateData.Arch,
-		"ARGS":          strings.Join(templateData.Args, " "),
-		"CACHE_DIR":     templateData.CacheDir.String(),
-		"CONFIG_FILE":   templateData.ConfigFile.String(),
-		"EXECUTABLE":    templateData.Executable.String(),
-		"FQDN_HOSTNAME": templateData.FQDNHostname,
-		"GID":           templateData.GID,
-		"GROUP":         templateData.Group,
-		"HOME_DIR":      templateData.HomeDir.String(),
-		"HOSTNAME":      templateData.Hostname,
-		"OS":            templateData.OS,
-		"SOURCE_DIR":    templateData.SourceDir.String(),
-		"UID":           templateData.UID,
-		"USERNAME":      templateData.Username,
-		"WORKING_TREE":  templateData.WorkingTree.String(),
+		"ARCH":          templateData.arch,
+		"ARGS":          strings.Join(templateData.args, " "),
+		"CACHE_DIR":     templateData.cacheDir.String(),
+		"COMMAND":       templateData.command,
+		"CONFIG_FILE":   templateData.configFile.String(),
+		"EXECUTABLE":    templateData.executable.String(),
+		"FQDN_HOSTNAME": templateData.fqdnHostname,
+		"GID":           templateData.gid,
+		"GROUP":         templateData.group,
+		"HOME_DIR":      templateData.homeDir.String(),
+		"HOSTNAME":      templateData.hostname,
+		"OS":            templateData.os,
+		"SOURCE_DIR":    templateData.sourceDir.String(),
+		"UID":           templateData.uid,
+		"USERNAME":      templateData.username,
+		"WORKING_TREE":  templateData.workingTree.String(),
 	} {
 		scriptEnv = append(scriptEnv, "CHEZMOI_"+key+"="+value)
 	}
+	if c.Verbose {
+		scriptEnv = append(scriptEnv, "CHEZMOI_VERBOSE=1")
+	}
 	for groupKey, group := range map[string]map[string]any{
-		"KERNEL":          templateData.Kernel,
-		"OS_RELEASE":      templateData.OSRelease,
-		"VERSION":         templateData.Version,
-		"WINDOWS_VERSION": templateData.WindowsVersion,
+		"KERNEL":          templateData.kernel,
+		"OS_RELEASE":      templateData.osRelease,
+		"VERSION":         templateData.version,
+		"WINDOWS_VERSION": templateData.windowsVersion,
 	} {
 		for key, value := range group {
 			upperSnakeCaseKey := camelCaseToUpperSnakeCase(key)
@@ -1887,7 +1956,14 @@ func (c *Config) persistentPreRunRootE(cmd *cobra.Command, args []string) error 
 	for key, value := range c.ScriptEnv {
 		scriptEnv = append(scriptEnv, key+"="+value)
 	}
+	c.runEnv = scriptEnv
 	realSystem.SetScriptEnv(scriptEnv)
+
+	if command := c.Hooks[cmd.Name()].Pre; command.Command != "" {
+		if err := c.run(c.homeDirAbsPath, command.Command, command.Args); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
@@ -1919,7 +1995,15 @@ func (c *Config) persistentStateFile() (chezmoi.AbsPath, error) {
 	return defaultConfigFileAbsPath.Dir().Join(persistentStateFileRelPath), nil
 }
 
-func (c *Config) newTemplateData() *templateData {
+// progressAutoFunc detects whether progress bars should be displayed.
+func (c *Config) progressAutoFunc() bool {
+	if stdout, ok := c.stdout.(*os.File); ok {
+		return term.IsTerminal(int(stdout.Fd()))
+	}
+	return false
+}
+
+func (c *Config) newTemplateData(cmd *cobra.Command) *templateData {
 	// Determine the user's username and group, if possible.
 	//
 	// user.Current and user.LookupGroupId in Go's standard library are
@@ -2009,30 +2093,32 @@ func (c *Config) newTemplateData() *templateData {
 	sourceDirAbsPath, _ := c.getSourceDirAbsPath(nil)
 
 	return &templateData{
-		Arch:         runtime.GOARCH,
-		Args:         os.Args,
-		CacheDir:     c.CacheDirAbsPath,
-		ConfigFile:   c.configFileAbsPath,
-		Executable:   chezmoi.NewAbsPath(executable),
-		FQDNHostname: fqdnHostname,
-		GID:          gid,
-		Group:        group,
-		HomeDir:      c.homeDirAbsPath,
-		Hostname:     hostname,
-		Kernel:       kernel,
-		OS:           runtime.GOOS,
-		OSRelease:    osRelease,
-		SourceDir:    sourceDirAbsPath,
-		UID:          uid,
-		Username:     username,
-		Version: map[string]any{
+		arch:         runtime.GOARCH,
+		args:         os.Args,
+		cacheDir:     c.CacheDirAbsPath,
+		command:      cmd.Name(),
+		config:       c.ConfigFile.toMap(),
+		configFile:   c.configFileAbsPath,
+		executable:   chezmoi.NewAbsPath(executable),
+		fqdnHostname: fqdnHostname,
+		gid:          gid,
+		group:        group,
+		homeDir:      c.homeDirAbsPath,
+		hostname:     hostname,
+		kernel:       kernel,
+		os:           runtime.GOOS,
+		osRelease:    osRelease,
+		sourceDir:    sourceDirAbsPath,
+		uid:          uid,
+		username:     username,
+		version: map[string]any{
 			"builtBy": c.versionInfo.BuiltBy,
 			"commit":  c.versionInfo.Commit,
 			"date":    c.versionInfo.Date,
 			"version": c.versionInfo.Version,
 		},
-		WindowsVersion: windowsVersion,
-		WorkingTree:    c.WorkingTreeAbsPath,
+		windowsVersion: windowsVersion,
+		workingTree:    c.WorkingTreeAbsPath,
 	}
 }
 
@@ -2046,6 +2132,12 @@ func (c *Config) readConfig() error {
 	}
 }
 
+// resetSourceState clears the cached source state, if any.
+func (c *Config) resetSourceState() {
+	c.sourceState = nil
+	c.sourceStateErr = nil
+}
+
 // run runs name with args in dir.
 func (c *Config) run(dir chezmoi.AbsPath, name string, args []string) error {
 	cmd := exec.Command(name, args...)
@@ -2056,6 +2148,7 @@ func (c *Config) run(dir chezmoi.AbsPath, name string, args []string) error {
 		}
 		cmd.Dir = dirRawAbsPath.String()
 	}
+	cmd.Env = c.runEnv
 	cmd.Stdin = c.stdin
 	cmd.Stdout = c.stdout
 	cmd.Stderr = c.stderr
@@ -2122,6 +2215,7 @@ func (c *Config) setEncryption() error {
 func (c *Config) sourceAbsPaths(sourceState *chezmoi.SourceState, args []string) ([]chezmoi.AbsPath, error) {
 	targetRelPaths, err := c.targetRelPaths(sourceState, args, targetRelPathsOptions{
 		mustBeInSourceState: true,
+		mustBeManaged:       true,
 	})
 	if err != nil {
 		return nil, err
@@ -2145,6 +2239,7 @@ func (c *Config) targetRelPath(absPath chezmoi.AbsPath) (chezmoi.RelPath, error)
 
 type targetRelPathsOptions struct {
 	mustBeInSourceState bool
+	mustBeManaged       bool
 	recursive           bool
 }
 
@@ -2163,11 +2258,12 @@ func (c *Config) targetRelPaths(
 		if err != nil {
 			return nil, err
 		}
-		if err != nil {
-			return nil, err
+		sourceStateEntry := sourceState.Get(targetRelPath)
+		if options.mustBeManaged && sourceStateEntry == nil {
+			return nil, fmt.Errorf("%s: not managed", arg)
 		}
 		if options.mustBeInSourceState {
-			if !sourceState.Contains(targetRelPath) {
+			if _, ok := sourceStateEntry.(*chezmoi.SourceStateRemove); ok {
 				return nil, fmt.Errorf("%s: not in source state", arg)
 			}
 		}
@@ -2244,7 +2340,7 @@ func (c *Config) targetValidArgs(
 		return nil, cobra.ShellCompDirectiveError
 	}
 
-	sourceState, err := c.getSourceState(cmd.Context())
+	sourceState, err := c.getSourceState(cmd.Context(), cmd)
 	if err != nil {
 		cobra.CompErrorln(err.Error())
 		return nil, cobra.ShellCompDirectiveError
@@ -2346,6 +2442,9 @@ func newConfigFile(bds *xdg.BaseDirectorySpecification) ConfigFile {
 		},
 		Interpreters: defaultInterpreters,
 		Pager:        os.Getenv("PAGER"),
+		Progress: autoBool{
+			auto: true,
+		},
 		PINEntry: pinEntryConfig{
 			Options: pinEntryDefaultOptions,
 		},
@@ -2368,11 +2467,18 @@ func newConfigFile(bds *xdg.BaseDirectorySpecification) ConfigFile {
 		Bitwarden: bitwardenConfig{
 			Command: "bw",
 		},
+		Dashlane: dashlaneConfig{
+			Command: "dcli",
+		},
+		Ejson: ejsonConfig{
+			KeyDir: firstNonEmptyString(os.Getenv("EJSON_KEYDIR"), "/opt/ejson/keys"),
+		},
 		Gopass: gopassConfig{
 			Command: "gopass",
 		},
 		Keepassxc: keepassxcConfig{
 			Command: "keepassxc-cli",
+			Prompt:  true,
 		},
 		Keeper: keeperConfig{
 			Command: "keeper",
@@ -2390,6 +2496,9 @@ func newConfigFile(bds *xdg.BaseDirectorySpecification) ConfigFile {
 		Passhole: passholeConfig{
 			Command: "ph",
 			Prompt:  true,
+		},
+		RBW: rbwConfig{
+			Command: "rbw",
 		},
 		Vault: vaultConfig{
 			Command: "vault",
@@ -2418,6 +2527,9 @@ func newConfigFile(bds *xdg.BaseDirectorySpecification) ConfigFile {
 		Git: gitCmdConfig{
 			Command: "git",
 		},
+		GitHub: gitHubConfig{
+			RefreshPeriod: 1 * time.Minute,
+		},
 		Merge: mergeCmdConfig{
 			Command: "vimdiff",
 		},
@@ -2438,6 +2550,14 @@ func newConfigFile(bds *xdg.BaseDirectorySpecification) ConfigFile {
 			recursive: true,
 		},
 	}
+}
+
+func (f *ConfigFile) toMap() map[string]any {
+	var result map[string]any
+	if err := mapstructure.Decode(f, &result); err != nil {
+		panic(err)
+	}
+	return result
 }
 
 func parseCommand(command string, args []string) (string, []string, error) {

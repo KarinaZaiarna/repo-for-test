@@ -3,8 +3,7 @@ package git
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/alecthomas/assert/v2"
 )
 
 func TestParseStatusPorcelainV2(t *testing.T) {
@@ -21,7 +20,7 @@ func TestParseStatusPorcelainV2(t *testing.T) {
 		},
 		{
 			name:      "added",
-			outputStr: "1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 cea5c3500651a923bacd80f960dd20f04f71d509 main.go\n", //nolint:dupword
+			outputStr: "1 A. N... 000000 100644 100644 0000000000000000000000000000000000000000 cea5c3500651a923bacd80f960dd20f04f71d509 main.go\n",
 			expectedStatus: &Status{
 				Ordinary: []OrdinaryStatus{
 					{
@@ -40,7 +39,7 @@ func TestParseStatusPorcelainV2(t *testing.T) {
 		},
 		{
 			name:      "removed",
-			outputStr: "1 D. N... 100644 000000 000000 cea5c3500651a923bacd80f960dd20f04f71d509 0000000000000000000000000000000000000000 main.go\n", //nolint:dupword
+			outputStr: "1 D. N... 100644 000000 000000 cea5c3500651a923bacd80f960dd20f04f71d509 0000000000000000000000000000000000000000 main.go\n",
 			expectedStatus: &Status{
 				Ordinary: []OrdinaryStatus{
 					{
@@ -59,7 +58,7 @@ func TestParseStatusPorcelainV2(t *testing.T) {
 		},
 		{
 			name:      "update",
-			outputStr: "1 .M N... 100644 100644 100644 353dbbb3c29a80fb44d4e26dac111739d25294db 353dbbb3c29a80fb44d4e26dac111739d25294db cmd/git.go\n", //nolint:dupword
+			outputStr: "1 .M N... 100644 100644 100644 353dbbb3c29a80fb44d4e26dac111739d25294db 353dbbb3c29a80fb44d4e26dac111739d25294db cmd/git.go\n",
 			expectedStatus: &Status{
 				Ordinary: []OrdinaryStatus{
 					{
@@ -78,7 +77,7 @@ func TestParseStatusPorcelainV2(t *testing.T) {
 		},
 		{
 			name:      "renamed",
-			outputStr: "2 R. N... 100644 100644 100644 9d06c86ecba40e1c695e69b55a40843df6a79cef 9d06c86ecba40e1c695e69b55a40843df6a79cef R100 chezmoi_rename.go\tchezmoi.go\n", //nolint:dupword
+			outputStr: "2 R. N... 100644 100644 100644 9d06c86ecba40e1c695e69b55a40843df6a79cef 9d06c86ecba40e1c695e69b55a40843df6a79cef R100 chezmoi_rename.go\tchezmoi.go\n",
 			expectedStatus: &Status{
 				RenamedOrCopied: []RenamedOrCopiedStatus{
 					{
@@ -122,7 +121,7 @@ func TestParseStatusPorcelainV2(t *testing.T) {
 		},
 		{
 			name:      "modified_2",
-			outputStr: "1 .M N... 100644 100644 100644 5716ca5987cbf97d6bb54920bea6adde242d87e6 5716ca5987cbf97d6bb54920bea6adde242d87e6 foo\n", //nolint:dupword
+			outputStr: "1 .M N... 100644 100644 100644 5716ca5987cbf97d6bb54920bea6adde242d87e6 5716ca5987cbf97d6bb54920bea6adde242d87e6 foo\n",
 			expectedStatus: &Status{
 				Ordinary: []OrdinaryStatus{
 					{
@@ -141,7 +140,7 @@ func TestParseStatusPorcelainV2(t *testing.T) {
 		},
 		{
 			name:      "unmerged",
-			outputStr: "u UU N... 100644 100644 100644 100644 78981922613b2afb6025042ff6bd878ac1994e85 0f7bc766052a5a0ee28a393d51d2370f96d8ceb8 422c2b7ab3b3c668038da977e4e93a5fc623169c README.md\n", //nolint:dupword
+			outputStr: "u UU N... 100644 100644 100644 100644 78981922613b2afb6025042ff6bd878ac1994e85 0f7bc766052a5a0ee28a393d51d2370f96d8ceb8 422c2b7ab3b3c668038da977e4e93a5fc623169c README.md\n",
 			expectedStatus: &Status{
 				Unmerged: []UnmergedStatus{
 					{
@@ -185,7 +184,7 @@ func TestParseStatusPorcelainV2(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			actualStatus, err := ParseStatusPorcelainV2([]byte(tc.outputStr))
-			require.NoError(t, err)
+			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedEmpty, actualStatus.Empty())
 			assert.Equal(t, tc.expectedStatus, actualStatus)
 		})

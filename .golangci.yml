@@ -1,8 +1,12 @@
+run:
+  go: '1.19'
+
 linters:
   enable:
   - asciicheck
   - bidichk
   - bodyclose
+  - containedctx
   - contextcheck
   - decorder
   - depguard
@@ -19,6 +23,7 @@ linters:
   - forbidigo
   - forcetypeassert
   - gci
+  - gocheckcompilerdirectives
   - gocritic
   - godot
   - goerr113
@@ -30,6 +35,7 @@ linters:
   - gosec
   - gosimple
   - govet
+  - grouper
   - importas
   - ineffassign
   - interfacebloat
@@ -38,6 +44,7 @@ linters:
   - loggercheck
   - makezero
   - misspell
+  - musttag
   - nilerr
   - noctx
   - nolintlint
@@ -47,24 +54,28 @@ linters:
   - promlinter
   - reassign
   - revive
+  - rowserrcheck
+  - sqlclosecheck
   - staticcheck
   - stylecheck
   - tagliatelle
-  - testableexamples
   - tenv
+  - testableexamples
   - thelper
   - typecheck
   - unconvert
   - unparam
   - unused
+  - usestdlibvars
+  - wastedassign
   - whitespace
   disable:
   - asasalint
   - cyclop
   - exhaustive
-  - exhaustivestruct
   - exhaustruct
   - funlen
+  - ginkgolinter
   - gochecknoglobals
   - gochecknoinits
   - gocognit
@@ -81,21 +92,18 @@ linters:
   - nilnil
   - nlreturn
   - nonamedreturns
-  - nosnakecase
   - paralleltest
-  - rowserrcheck # https://github.com/golangci/golangci-lint/issues/2649
-  - sqlclosecheck # https://github.com/golangci/golangci-lint/issues/2649
-  - structcheck # https://github.com/golangci/golangci-lint/issues/2649
   - testpackage
   - tparallel
   - varnamelen
-  - wastedassign # https://github.com/golangci/golangci-lint/issues/2649
   - wrapcheck
   - wsl
 
 linters-settings:
   forbidigo:
     forbid:
+    - ^archive/zip\.
+    - ^compress/gzip\.
     - ^fmt\.Print.*$
     - ^ioutil\..*$
     - ^os\.(DirEntry|FileInfo|FileMode|Is.*|Mode.*)$
@@ -106,10 +114,14 @@ linters-settings:
     - prefix(github.com/twpayne/chezmoi)
   gofumpt:
     extra-rules: true
-    lang-version: '1.18'
     module-path: github.com/twpayne/chezmoi
   goimports:
     local-prefixes: github.com/twpayne/chezmoi
+  govet:
+    disable:
+    - fieldalignment
+    - shadow
+    enable-all: true
   ireturn:
     allow:
     - anon
@@ -123,6 +135,7 @@ linters-settings:
     - github\.com/twpayne/chezmoi/v2/pkg/chezmoi\.ActualStateEntry
     - github\.com/twpayne/chezmoi/v2/pkg/chezmoi\.Encryption
     - github\.com/twpayne/chezmoi/v2/pkg/chezmoi\.Format
+    - github\.com/twpayne/chezmoi/v2/pkg/chezmoi\.PersistentState
     - github\.com/twpayne/chezmoi/v2/pkg/chezmoi\.SourceStateOrigin
     - github\.com/twpayne/chezmoi/v2/pkg/chezmoi\.SourceStateEntry
     - github\.com/twpayne/chezmoi/v2/pkg/chezmoi\.System
@@ -137,17 +150,21 @@ linters-settings:
 
 issues:
   include:
-  - EXC0011   # include issues about comments from `stylecheck`
+  - EXC0011 # include issues about comments from `stylecheck`
   exclude-rules:
   - linters:
     - goerr113
     text: do not define dynamic errors, use wrapped static errors instead
+  - linters:
+    - revive
+    text: unused-parameter
   - linters:
     - forbidigo
     - gosec
     - lll
     path: ^internal/cmds/
   - linters:
+    - forcetypeassert
     - gosec
     - lll
     path: _test\.go$

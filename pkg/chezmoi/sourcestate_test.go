@@ -14,9 +14,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/alecthomas/assert/v2"
 	"github.com/coreos/go-semver/semver"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	vfs "github.com/twpayne/go-vfs/v4"
 	"github.com/twpayne/go-vfs/v4/vfst"
 
@@ -429,23 +428,6 @@ func TestSourceStateAdd(t *testing.T) {
 			},
 		},
 		{
-			name: "template",
-			destAbsPaths: []AbsPath{
-				NewAbsPath("/home/user/.template"),
-			},
-			addOptions: AddOptions{
-				AutoTemplate: true,
-				Filter:       NewEntryTypeFilter(EntryTypesAll, EntryTypesNone),
-			},
-			tests: []any{
-				vfst.TestPath("/home/user/.local/share/chezmoi/dot_template.tmpl",
-					vfst.TestModeIsRegular,
-					vfst.TestModePerm(0o666&^chezmoitest.Umask),
-					vfst.TestContentsString("key = {{ .variable }}\n"),
-				),
-			},
-		},
-		{
 			name: "dir_and_dir_file",
 			destAbsPaths: []AbsPath{
 				NewAbsPath("/home/user/.dir"),
@@ -520,7 +502,7 @@ func TestSourceStateAdd(t *testing.T) {
 				system := NewRealSystem(fileSystem)
 				persistentState := NewMockPersistentState()
 				if tc.extraRoot != nil {
-					require.NoError(t, vfst.NewBuilder().Build(system.UnderlyingFS(), tc.extraRoot))
+					assert.NoError(t, vfst.NewBuilder().Build(system.UnderlyingFS(), tc.extraRoot))
 				}
 
 				s := NewSourceState(
@@ -532,14 +514,14 @@ func TestSourceStateAdd(t *testing.T) {
 						"variable": "value",
 					}),
 				)
-				require.NoError(t, s.Read(ctx, nil))
+				assert.NoError(t, s.Read(ctx, nil))
 				requireEvaluateAll(t, s, system)
 
 				destAbsPathInfos := make(map[AbsPath]fs.FileInfo)
 				for _, destAbsPath := range tc.destAbsPaths {
-					require.NoError(t, s.AddDestAbsPathInfos(destAbsPathInfos, system, destAbsPath, nil))
+					assert.NoError(t, s.AddDestAbsPathInfos(destAbsPathInfos, system, destAbsPath, nil))
 				}
-				require.NoError(t, s.Add(system, persistentState, system, destAbsPathInfos, &tc.addOptions))
+				assert.NoError(t, s.Add(system, persistentState, system, destAbsPathInfos, &tc.addOptions))
 
 				vfst.RunTests(t, fileSystem, "", tc.tests...)
 			})
@@ -550,14 +532,14 @@ func TestSourceStateAdd(t *testing.T) {
 func TestSourceStateAddInExternal(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	tarWriterSystem := NewTarWriterSystem(buffer, tar.Header{})
-	require.NoError(t, tarWriterSystem.Mkdir(NewAbsPath("dir"), fs.ModePerm))
-	require.NoError(t, tarWriterSystem.WriteFile(NewAbsPath("dir/file"), []byte("# contents of dir/file\n"), 0o666))
-	require.NoError(t, tarWriterSystem.Close())
+	assert.NoError(t, tarWriterSystem.Mkdir(NewAbsPath("dir"), fs.ModePerm))
+	assert.NoError(t, tarWriterSystem.WriteFile(NewAbsPath("dir/file"), []byte("# contents of dir/file\n"), 0o666))
+	assert.NoError(t, tarWriterSystem.Close())
 	archiveData := buffer.Bytes()
 
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write(archiveData)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}))
 	defer httpServer.Close()
 
@@ -587,15 +569,15 @@ func TestSourceStateAddInExternal(t *testing.T) {
 			WithSourceDir(NewAbsPath("/home/user/.local/share/chezmoi")),
 			WithSystem(system),
 		)
-		require.NoError(t, s.Read(ctx, nil))
+		assert.NoError(t, s.Read(ctx, nil))
 
 		destAbsPath := NewAbsPath("/home/user/.dir/file2")
 		fileInfo, err := system.Stat(destAbsPath)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 		destAbsPathInfos := map[AbsPath]fs.FileInfo{
 			destAbsPath: fileInfo,
 		}
-		require.NoError(t, s.Add(system, persistentState, system, destAbsPathInfos, &AddOptions{
+		assert.NoError(t, s.Add(system, persistentState, system, destAbsPathInfos, &AddOptions{
 			Filter: NewEntryTypeFilter(EntryTypesAll, EntryTypesNone),
 		}))
 
@@ -819,9 +801,9 @@ func TestSourceStateApplyAll(t *testing.T) {
 				}
 				sourceStateOptions = append(sourceStateOptions, tc.sourceStateOptions...)
 				s := NewSourceState(sourceStateOptions...)
-				require.NoError(t, s.Read(ctx, nil))
+				assert.NoError(t, s.Read(ctx, nil))
 				requireEvaluateAll(t, s, system)
-				require.NoError(t, s.applyAll(system, system, persistentState, NewAbsPath("/home/user"), ApplyOptions{
+				assert.NoError(t, s.applyAll(system, system, persistentState, NewAbsPath("/home/user"), ApplyOptions{
 					Filter: NewEntryTypeFilter(EntryTypesAll, EntryTypesNone),
 					Umask:  chezmoitest.Umask,
 				}))
@@ -1309,6 +1291,88 @@ func TestSourceStateRead(t *testing.T) {
 			),
 		},
 		{
+			name: "external",
+			root: map[string]any{
+				"/home/user/.local/share/chezmoi": map[string]any{
+					"external_dir": map[string]any{
+						"dot_file": "# contents of dir/dot_file\n",
+						"subdir": map[string]any{
+							"empty_file": "",
+						},
+						"symlink": &vfst.Symlink{Target: "dot_file"},
+					},
+				},
+			},
+			expectedSourceState: NewSourceState(
+				withEntries(map[RelPath]SourceStateEntry{
+					NewRelPath("dir"): &SourceStateDir{
+						origin:        SourceStateOriginAbsPath(NewAbsPath("/home/user/.local/share/chezmoi/external_dir")),
+						sourceRelPath: NewSourceRelDirPath("external_dir"),
+						Attr: DirAttr{
+							TargetName: "dir",
+							External:   true,
+						},
+						targetStateEntry: &TargetStateDir{
+							perm: fs.ModePerm &^ chezmoitest.Umask,
+						},
+					},
+					NewRelPath("dir/dot_file"): &SourceStateFile{
+						origin:        SourceStateOriginAbsPath(NewAbsPath("/home/user/.local/share/chezmoi/external_dir/dot_file")),
+						sourceRelPath: NewSourceRelPath("external_dir/dot_file"),
+						Attr: FileAttr{
+							TargetName: "dot_file",
+							Type:       SourceFileTypeFile,
+							Empty:      true,
+						},
+						lazyContents: newLazyContents([]byte("# contents of dir/dot_file\n")),
+						targetStateEntry: &TargetStateFile{
+							empty:        true,
+							perm:         0o666 &^ chezmoitest.Umask,
+							lazyContents: newLazyContents([]byte("# contents of dir/dot_file\n")),
+						},
+					},
+					NewRelPath("dir/subdir"): &SourceStateDir{
+						origin:        SourceStateOriginAbsPath(NewAbsPath("/home/user/.local/share/chezmoi/external_dir/subdir")),
+						sourceRelPath: NewSourceRelDirPath("external_dir/subdir"),
+						Attr: DirAttr{
+							TargetName: "subdir",
+							Exact:      true,
+						},
+						targetStateEntry: &TargetStateDir{
+							perm: fs.ModePerm &^ chezmoitest.Umask,
+						},
+					},
+					NewRelPath("dir/subdir/empty_file"): &SourceStateFile{
+						origin:        SourceStateOriginAbsPath(NewAbsPath("/home/user/.local/share/chezmoi/external_dir/subdir/empty_file")),
+						sourceRelPath: NewSourceRelPath("external_dir/subdir/empty_file"),
+						Attr: FileAttr{
+							TargetName: "empty_file",
+							Type:       SourceFileTypeFile,
+							Empty:      true,
+						},
+						lazyContents: newLazyContents([]byte{}),
+						targetStateEntry: &TargetStateFile{
+							empty:        true,
+							perm:         0o666 &^ chezmoitest.Umask,
+							lazyContents: newLazyContents([]byte{}),
+						},
+					},
+					NewRelPath("dir/symlink"): &SourceStateFile{
+						origin:        SourceStateOriginAbsPath(NewAbsPath("/home/user/.local/share/chezmoi/external_dir/symlink")),
+						sourceRelPath: NewSourceRelPath("external_dir/symlink"),
+						Attr: FileAttr{
+							TargetName: "symlink",
+							Type:       SourceFileTypeFile,
+						},
+						lazyContents: newLazyContents([]byte("dot_file")),
+						targetStateEntry: &TargetStateSymlink{
+							lazyLinkname: newLazyLinkname("dot_file"),
+						},
+					},
+				}),
+			),
+		},
+		{
 			name: "chezmoitemplates",
 			root: map[string]any{
 				"/home/user/.local/share/chezmoi": map[string]any{
@@ -1398,7 +1462,7 @@ func TestSourceStateRead(t *testing.T) {
 					assert.Equal(t, tc.expectedError, err.Error())
 					return
 				}
-				require.NoError(t, err)
+				assert.NoError(t, err)
 				requireEvaluateAll(t, s, system)
 				tc.expectedSourceState.destDirAbsPath = NewAbsPath("/home/user")
 				tc.expectedSourceState.sourceDirAbsPath = NewAbsPath("/home/user/.local/share/chezmoi")
@@ -1416,7 +1480,7 @@ func TestSourceStateRead(t *testing.T) {
 func TestSourceStateReadExternal(t *testing.T) {
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write([]byte("data"))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}))
 	defer httpServer.Close()
 
@@ -1494,7 +1558,7 @@ func TestSourceStateReadExternal(t *testing.T) {
 					WithSourceDir(NewAbsPath("/home/user/.local/share/chezmoi")),
 					WithSystem(system),
 				)
-				require.NoError(t, s.Read(ctx, nil))
+				assert.NoError(t, s.Read(ctx, nil))
 				assert.Equal(t, tc.expectedExternals, s.externals)
 			})
 		})
@@ -1531,7 +1595,7 @@ func TestSourceStateReadScriptsConcurrent(t *testing.T) {
 					WithSystem(system),
 				)
 
-				require.NoError(t, s.Read(ctx, nil))
+				assert.NoError(t, s.Read(ctx, nil))
 			})
 		})
 	}
@@ -1540,15 +1604,15 @@ func TestSourceStateReadScriptsConcurrent(t *testing.T) {
 func TestSourceStateReadExternalCache(t *testing.T) {
 	buffer := &bytes.Buffer{}
 	tarWriterSystem := NewTarWriterSystem(buffer, tar.Header{})
-	require.NoError(t, tarWriterSystem.WriteFile(NewAbsPath("file"), []byte("# contents of file\n"), 0o666))
-	require.NoError(t, tarWriterSystem.Close())
+	assert.NoError(t, tarWriterSystem.WriteFile(NewAbsPath("file"), []byte("# contents of file\n"), 0o666))
+	assert.NoError(t, tarWriterSystem.Close())
 	archiveData := buffer.Bytes()
 
 	httpRequests := 0
 	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		httpRequests++
 		_, err := w.Write(archiveData)
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	}))
 	defer httpServer.Close()
 
@@ -1575,7 +1639,7 @@ func TestSourceStateReadExternalCache(t *testing.T) {
 				WithSourceDir(NewAbsPath("/home/user/.local/share/chezmoi")),
 				WithSystem(system),
 			)
-			require.NoError(t, s.Read(ctx, &ReadOptions{
+			assert.NoError(t, s.Read(ctx, &ReadOptions{
 				RefreshExternals: refreshExternals,
 				TimeNow: func() time.Time {
 					return now
@@ -1660,7 +1724,7 @@ func TestSourceStateTargetRelPaths(t *testing.T) {
 					WithSourceDir(NewAbsPath("/home/user/.local/share/chezmoi")),
 					WithSystem(system),
 				)
-				require.NoError(t, s.Read(ctx, nil))
+				assert.NoError(t, s.Read(ctx, nil))
 				assert.Equal(t, tc.expectedTargetRelPaths, s.TargetRelPaths())
 			})
 		})
@@ -1846,7 +1910,7 @@ func (s *SourceState) applyAll(
 // without error.
 func requireEvaluateAll(t *testing.T, s *SourceState, destSystem System) {
 	t.Helper()
-	require.NoError(t, s.root.ForEach(EmptyRelPath, func(targetRelPath RelPath, sourceStateEntry SourceStateEntry) error {
+	assert.NoError(t, s.root.ForEach(EmptyRelPath, func(targetRelPath RelPath, sourceStateEntry SourceStateEntry) error {
 		if err := sourceStateEntry.Evaluate(); err != nil {
 			return err
 		}

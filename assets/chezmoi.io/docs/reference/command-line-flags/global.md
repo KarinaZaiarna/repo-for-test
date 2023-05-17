@@ -2,9 +2,13 @@
 
 ## `--cache` *directory*
 
+> Configuration: `cacheDir`
+
 Use *directory* as the cache directory.
 
 ## `--color` *value*
+
+> Configuration: `color`
 
 Colorize diffs, *value* can be `on`, `off`, `auto`, or any boolean-like value
 recognized by `promptBool`. The default is `auto` which will colorize diffs only
@@ -12,15 +16,17 @@ if the environment variable `$NO_COLOR` is not set and stdout is a terminal.
 
 ## `-c`, `--config` *filename*
 
-Read the configuration from *filename*.
+Read the [configuration](/reference/configuration-file) from *filename*.
 
-## `--config-format` `json`|`toml`|`yaml`
+## `--config-format` `json`|`jsonc`|`toml`|`yaml`
 
 Assume the configuration file is in the given format. This is only needed if
 the config filename does not have an extension, for example when it is
 `/dev/stdin`.
 
 ## `-D`, `--destination` *directory*
+
+> Configuration: `destDir`
 
 Use *directory* as the destination directory.
 
@@ -48,8 +54,7 @@ Do not use the pager.
 
 ## `--no-tty`
 
-Do not attempt to get a TTY to read input and passwords. Instead, read them
-from stdin.
+Do not attempt to get a TTY for prompts. Instead, read them from stdin.
 
 ## `-o`, `--output` *filename*
 
@@ -57,13 +62,16 @@ Write the output to *filename* instead of stdout.
 
 ## `--persistent-state` *filename*
 
+> Configuration: `persistentState`
+
 Read and write the persistent state from *filename*. By default, chezmoi stores
 its persistent state in `chezmoistate.boltdb` in the same directory as its
 configuration file.
 
-## `--progress`
+## `--progress` *value*
 
-Show progress when downloading externals.
+Show progress when downloading externals. *value* can be `on`, `off`, or `auto`.
+The default is `auto` which shows progress bars when stdout is a terminal.
 
 ## `-R`, `--refresh-externals` [*value*]
 
@@ -82,9 +90,13 @@ if no cached external is available.
 
 ## `-S`, `--source` *directory*
 
+> Configuration: `sourceDir`
+
 Use *directory* as the source directory.
 
 ## `--use-builtin-age` *value*
+
+> Configuration: `useBuiltinAge`
 
 Use chezmoi's builtin [age encryption](https://age-encryption.org) instead of an
 external `age` command. *value* can be `on`, `off`, `auto`, or any boolean-like
@@ -95,6 +107,8 @@ The builtin `age` command does not support passphrases, symmetric encryption,
 or the use of SSH keys.
 
 ## `--use-builtin-git` *value*
+
+> Configuration: `useBuiltinGit`
 
 Use chezmoi's builtin git instead of `git.command` for the `init` and `update`
 commands. *value* can be `on`, `off`, `auto`, or any boolean-like value

@@ -59,6 +59,7 @@ func (c *Config) runEditCmd(cmd *cobra.Command, args []string) error {
 		}
 		if c.Edit.Apply {
 			if err := c.applyArgs(cmd.Context(), c.destSystem, c.DestDirAbsPath, noArgs, applyArgsOptions{
+				cmd:          cmd,
 				filter:       c.Edit.filter,
 				init:         c.Edit.init,
 				recursive:    true,
@@ -71,13 +72,14 @@ func (c *Config) runEditCmd(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	sourceState, err := c.newSourceState(cmd.Context())
+	sourceState, err := c.newSourceState(cmd.Context(), cmd)
 	if err != nil {
 		return err
 	}
 
 	targetRelPaths, err := c.targetRelPaths(sourceState, args, targetRelPathsOptions{
 		mustBeInSourceState: true,
+		mustBeManaged:       true,
 	})
 	if err != nil {
 		return err
@@ -89,7 +91,7 @@ func (c *Config) runEditCmd(cmd *cobra.Command, args []string) error {
 		decryptedAbsPath chezmoi.AbsPath
 	}
 	var transparentlyDecryptedFiles []transparentlyDecryptedFile
-TARGETRELPATH:
+TARGET_REL_PATH:
 	for _, targetRelPath := range targetRelPaths {
 		sourceStateEntry := sourceState.MustEntry(targetRelPath)
 		sourceRelPath := sourceStateEntry.SourceRelPath()
@@ -153,7 +155,7 @@ TARGETRELPATH:
 			}
 			if err := c.baseSystem.Link(c.SourceDirAbsPath.Join(sourceRelPath.RelPath()), hardlinkAbsPath); err == nil {
 				editorArgs = append(editorArgs, hardlinkAbsPath.String())
-				continue TARGETRELPATH
+				continue TARGET_REL_PATH
 			}
 
 			// Otherwise, fall through to the default option of editing the
@@ -177,7 +179,15 @@ TARGETRELPATH:
 		}
 
 		if c.Edit.Apply || c.Edit.Watch {
+			// Reset the cached source state to ensure that we re-read any
+			// changed files.
+			//
+			// FIXME Be more precise in what we invalidate. Only the changed
+			// files need to be re-read, not the entire source state.
+			c.resetSourceState()
+
 			if err := c.applyArgs(cmd.Context(), c.destSystem, c.DestDirAbsPath, args, applyArgsOptions{
+				cmd:          cmd,
 				filter:       c.Edit.filter,
 				init:         c.Edit.init,
 				recursive:    true,
@@ -235,9 +245,5 @@ TARGETRELPATH:
 		return err
 	}
 
-	if err := postEditFunc(); err != nil {
-		return err
-	}
-
-	return nil
+	return postEditFunc()
 }

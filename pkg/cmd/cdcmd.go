@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"errors"
+	"os"
+
 	"github.com/spf13/cobra"
 
 	"github.com/twpayne/chezmoi/v2/pkg/chezmoi"
@@ -22,9 +25,9 @@ func (c *Config) newCDCmd() *cobra.Command {
 		Args:    cobra.MaximumNArgs(1),
 		Annotations: newAnnotations(
 			createSourceDirectoryIfNeeded,
-			doesNotRequireValidConfig,
 			requiresWorkingTree,
 			runsCommands,
+			runsWithInvalidConfig,
 		),
 	}
 
@@ -32,6 +35,10 @@ func (c *Config) newCDCmd() *cobra.Command {
 }
 
 func (c *Config) runCDCmd(cmd *cobra.Command, args []string) error {
+	if _, ok := os.LookupEnv("CHEZMOI"); ok {
+		return errors.New("already in a chezmoi subshell")
+	}
+
 	cdCommand, cdArgs, err := c.cdCommand()
 	if err != nil {
 		return err
@@ -40,15 +47,25 @@ func (c *Config) runCDCmd(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		dir = c.WorkingTreeAbsPath
 	} else {
-		sourceState, err := c.getSourceState(cmd.Context())
-		if err != nil {
+		switch argAbsPath, err := chezmoi.NewAbsPathFromExtPath(args[0], c.homeDirAbsPath); {
+		case err != nil:
 			return err
+		case argAbsPath == c.DestDirAbsPath:
+			dir, err = c.getSourceDirAbsPath(nil)
+			if err != nil {
+				return err
+			}
+		default:
+			sourceState, err := c.getSourceState(cmd.Context(), cmd)
+			if err != nil {
+				return err
+			}
+			sourceAbsPaths, err := c.sourceAbsPaths(sourceState, args)
+			if err != nil {
+				return err
+			}
+			dir = sourceAbsPaths[0]
 		}
-		sourceAbsPaths, err := c.sourceAbsPaths(sourceState, args)
-		if err != nil {
-			return err
-		}
-		dir = sourceAbsPaths[0]
 	}
 	return c.run(dir, cdCommand, cdArgs)
 }

@@ -6,14 +6,13 @@ jobs:
   govulncheck:
     runs-on: ubuntu-22.04
     steps:
-    - uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8
+    - uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab
     - name: go-version
       id: go-version
       run: |
-        echo go-version="$(awk '/GO_VERSION:/ { print $2 }' .github/workflows/main.yml)" >> ${GITHUB_OUTPUT}
-    - uses: actions/setup-go@c4a742cab115ed795e34d4513e2cf7d472deb55f
+        echo go-version="$(awk '/GO_VERSION:/ { print $2 }' .github/workflows/main.yml | tr -d \')" >> ${GITHUB_OUTPUT}
+    - uses: actions/setup-go@4d34df0c2316fe8122ab82dc22947d607c0c91f9
       with:
-        cache: true
         go-version: ${{ steps.go-version.outputs.go-version }}
     - name: install
       run: |

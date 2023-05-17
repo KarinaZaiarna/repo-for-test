@@ -19,6 +19,7 @@ to as "attributes":
 | `dot_`        | Rename to use a leading dot, e.g. `dot_foo` becomes `.foo`                          |
 | `empty_`      | Ensure the file exists, even if is empty. By default, empty files are removed       |
 | `encrypted_`  | Encrypt the file in the source state                                                |
+| `external_`   | Ignore attributes in child entries                                                  |
 | `exact_`      | Remove anything not managed by chezmoi                                              |
 | `executable_` | Add executable permissions to the target file                                       |
 | `literal_`    | Stop parsing prefix attributes                                                      |
@@ -39,15 +40,16 @@ to as "attributes":
 Different target types allow different prefixes and suffixes. The order of
 prefixes is important.
 
-| Target type   | Source type | Allowed prefixes in order                                               | Allowed suffixes |
-| ------------- | ----------- | ----------------------------------------------------------------------- | ---------------- |
-| Directory     | Directory   | `remove_`, `exact_`, `private_`, `readonly_`, `dot_`                    | *none*           |
-| Regular file  | File        | `encrypted_`, `private_`, `executable_`, `dot_`                         | `.tmpl`          |
-| Create file   | File        | `create_`, `encrypted_`, `private_`, `readonly_`, `executable_`, `dot_` | `.tmpl`          |
-| Modify file   | File        | `modify_`, `encrypted_`, `private_`, `readonly_`, `executable_`, `dot_` | `.tmpl`          |
-| Remove        | File        | `remove_`, `dot_`                                                       | *none*           |
-| Script        | File        | `run_`, `once_` or `onchange_`, `before_` or `after_`                   | `.tmpl`          |
-| Symbolic link | File        | `symlink_`, `dot_`                                                      | `.tmpl`          |
+| Target type      | Source type | Allowed prefixes in order                                                         | Allowed suffixes |
+| ---------------- | ----------- | --------------------------------------------------------------------------------- | ---------------- |
+| Directory        | Directory   | `external_`, `exact_`, `private_`, `readonly_`, `dot_`                            | *none*           |
+| Remove directory | Directory   | `remove_`, `dot_`                                                                 | *none*           |
+| Regular file     | File        | `encrypted_`, `private_`, `executable_`, `empty_`, `dot_`                         | `.tmpl`          |
+| Create file      | File        | `create_`, `encrypted_`, `private_`, `readonly_`, `empty_`, `executable_`, `dot_` | `.tmpl`          |
+| Modify file      | File        | `modify_`, `encrypted_`, `private_`, `readonly_`, `executable_`, `dot_`           | `.tmpl`          |
+| Remove file      | File        | `remove_`, `dot_`                                                                 | *none*           |
+| Script           | File        | `run_`, `once_` or `onchange_`, `before_` or `after_`                             | `.tmpl`          |
+| Symbolic link    | File        | `symlink_`, `dot_`                                                                | `.tmpl`          |
 
 The `literal_` prefix and `.literal` suffix can appear anywhere and stop
 attribute parsing. This permits filenames that would otherwise conflict with

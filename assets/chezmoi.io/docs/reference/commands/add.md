@@ -4,13 +4,6 @@ Add *target*s to the source state. If any target is already in the source
 state, then its source state is replaced with its current state in the
 destination directory.
 
-## `--autotemplate`
-
-Automatically generate a template by replacing strings that match variable
-values from the `data` section of the config file with their respective config
-names as a template string. Longer substitutions occur before shorter ones.
-This implies the `--template` option.
-
 ## `--encrypt`
 
 Encrypt files using the defined encryption method.
@@ -36,6 +29,10 @@ Only add entries of type *types*.
 ## `-p`, `--prompt`
 
 Interactively prompt before adding each file.
+
+## `-q`, `--quiet`
+
+Suppress warnings about adding ignored entries.
 
 ## `-r`, `--recursive`
 

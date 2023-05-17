@@ -94,7 +94,7 @@ Finally, exit the shell in the source directory to return to where you were:
 $ exit
 ```
 
-These commands are summarized this sequence diagram:
+These commands are summarized in this sequence diagram:
 
 ```mermaid
 sequenceDiagram
@@ -121,6 +121,15 @@ On a second machine, initialize chezmoi with your dotfiles repo:
 ```console
 $ chezmoi init https://github.com/$GITHUB_USERNAME/dotfiles.git
 ```
+
+!!! hint
+
+    Private GitHub repos requires other
+    [authentication methods](https://docs.github.com/en/get-started/getting-started-with-git/about-remote-repositories#cloning-with-https-urls):
+
+    ```console
+    $ chezmoi init git@github.com:$GITHUB_USERNAME/dotfiles.git
+    ```
 
 This will check out the repo and any submodules and optionally create a chezmoi
 config file for you.
@@ -157,7 +166,7 @@ On any machine, you can pull and apply the latest changes from your repo with:
 $ chezmoi update -v
 ```
 
-These commands are summarized in the this sequence diagram:
+These commands are summarized in this sequence diagram:
 
 ```mermaid
 sequenceDiagram
@@ -188,7 +197,16 @@ shortened to:
 $ chezmoi init --apply $GITHUB_USERNAME
 ```
 
-This command is summarized in the this sequence diagram:
+!!! hint
+
+    Private GitHub repos requires other
+    [authentication methods](https://docs.github.com/en/get-started/getting-started-with-git/about-remote-repositories#cloning-with-https-urls):
+
+    ```console
+    chezmoi init --apply git@github.com:$GITHUB_USERNAME/dotfiles.git
+    ```
+
+This command is summarized in this sequence diagram:
 
 ```mermaid
 sequenceDiagram
@@ -207,8 +225,8 @@ For a full list of commands run:
 $ chezmoi help
 ```
 
-chezmoi has much more functionality. Good starting points are reading [articles
-about chezmoi](/links/articles-podcasts-and-videos/) adding more dotfiles, and
+chezmoi has much more functionality. Good starting points are reading [what
+other people say about chezmoi](/links/articles/), adding more dotfiles, and
 using templates to manage files that vary from machine to machine and retrieve
-secrets from your password manager. Read the [user guide](/user-guide/setup/)
-to explore.
+secrets from your password manager. Read the [user guide](/user-guide/setup/) to
+explore and see [how people use chezmoi](/links/dotfile-repos/) for inspiration.

@@ -2,12 +2,12 @@ package cmd
 
 import (
 	"archive/tar"
-	"compress/gzip"
 	"os/user"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/klauspost/compress/gzip"
 	"github.com/spf13/cobra"
 
 	"github.com/twpayne/chezmoi/v2/pkg/chezmoi"
@@ -76,6 +76,7 @@ func (c *Config) runArchiveCmd(cmd *cobra.Command, args []string) error {
 		return chezmoi.UnknownArchiveFormatError(format)
 	}
 	if err := c.applyArgs(cmd.Context(), archiveSystem, chezmoi.EmptyAbsPath, args, applyArgsOptions{
+		cmd:       cmd,
 		filter:    c.archive.filter,
 		init:      c.archive.init,
 		recursive: c.archive.recursive,

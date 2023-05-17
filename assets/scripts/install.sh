@@ -60,6 +60,7 @@ main() {
 				GOOS_EXTRA="-musl"
 				;;
 			esac
+			;;
 		esac
 		;;
 	windows)
@@ -155,6 +156,7 @@ check_goos_goarch() {
 	freebsd/amd64) return 0 ;;
 	freebsd/arm) return 0 ;;
 	freebsd/arm64) return 0 ;;
+	freebsd/riscv64) return 0 ;;
 	illumos/amd64) return 0 ;;
 	linux/386) return 0 ;;
 	linux/amd64) return 0 ;;
@@ -186,7 +188,7 @@ check_goos_goarch() {
 get_libc() {
 	if is_command ldd; then
 		case "$(ldd --version 2>&1 | tr '[:upper:]' '[:lower:]')" in
-		*glibc*|*"gnu libc"*)
+		*glibc* | *"gnu libc"*)
 			printf glibc
 			return
 			;;

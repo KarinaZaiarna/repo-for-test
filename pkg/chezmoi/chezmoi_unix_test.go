@@ -1,16 +1,15 @@
 //go:build !windows
-// +build !windows
 
 package chezmoi
 
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/alecthomas/assert/v2"
 
 	"github.com/twpayne/chezmoi/v2/pkg/chezmoitest"
 )
 
 func TestUmask(t *testing.T) {
-	require.Equal(t, chezmoitest.Umask, Umask)
+	assert.Equal(t, chezmoitest.Umask, Umask)
 }
