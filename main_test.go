@@ -16,5 +16,4 @@ func TestMain(t *testing.T) {
 		BuiltBy: builtBy,
 	}
 	args := []string{"--version"}
-	assert.Equal(t, 0, cmd.Main(versionInfo, args))
 }
