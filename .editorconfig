@@ -1,10 +1,9 @@
 new 5/29/26 updated
 new row 1
 
-updated code
-
-[*.ps1]
-charset = "utf-8"
-end_of_line = "crlf"
-insert_final_newline = true
-trim_trailing_whitespace = true
+new code
+test
+test 1
+test 2
+test 3
+test 4
